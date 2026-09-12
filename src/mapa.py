@@ -45,7 +45,7 @@ CARPETA_SALIDA = RAIZ / "docs"
 
 FUENTE = (
     "Límites de localidades: Secretaría Distrital de Planeación — Datos Abiertos Bogotá (CC BY 4.0). "
-    "Coordenadas aproximadas. Distancias estimadas, pendientes de verificar en Google Maps."
+    "Coordenadas aproximadas. Distancias por vía: OSRM, © colaboradores de OpenStreetMap."
 )
 
 # El GeoJSON trae los nombres en mayúsculas y sin tildes; se reemplazan por código.
@@ -528,7 +528,7 @@ def generar_grafo_completo(grafo=None, localidades=None, carpeta=CARPETA_SALIDA)
     fig, ax = _nueva_figura(
         "Centros comerciales de Bogotá D.C. — grafo no dirigido ponderado",
         f"{grafo.number_of_nodes()} centros comerciales · {grafo.number_of_edges()} conexiones · "
-        "peso = distancia aproximada por vía (km) · tamaño del nodo = número de conexiones",
+        "peso = distancia por vía en carro (km) · tamaño del nodo = número de conexiones",
         localidades,
         _obstaculos(grafo, pos, con_ampliacion=True),
     )
