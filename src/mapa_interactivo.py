@@ -1,8 +1,9 @@
 """Mapa interactivo (HTML) del grafo de centros comerciales, hecho con Folium.
 
 Complementa a mapa.py: la imagen estática con las localidades de fondo es la que
-va en las diapositivas; este HTML permite hacer zoom sobre un mapa real de Bogotá,
-prender y apagar capas y ver los datos de cada centro comercial con un clic.
+va en las diapositivas; este HTML permite hacer zoom, prender y apagar capas y ver
+los datos de cada centro comercial con un clic. No lleva mapa de calles de fondo:
+las coordenadas son aproximadas y sobre las calles reales los puntos se ven corridos.
 
 Uso desde main.py:
     from mapa_interactivo import generar_mapa_interactivo
@@ -24,7 +25,7 @@ if str(RAIZ) not in sys.path:
 
 from data.conexiones import validar_grafo  # noqa: E402
 from mapa import (  # noqa: E402
-    CARPETA_SALIDA, COLOR_ARISTA, COLOR_NODO, COLOR_RUTA, _km, _validar_ruta, cargar_localidades,
+    ALPHA_MAPA, CARPETA_SALIDA, COLOR_ARISTA, COLOR_NODO, COLOR_RUTA, _km, _validar_ruta, cargar_localidades,
 )
 
 
@@ -53,14 +54,16 @@ def generar_mapa_interactivo(grafo=None, rutas=None, carpeta=CARPETA_SALIDA):
     latitudes = [d["lat"] for _, d in grafo.nodes(data=True)]
     longitudes = [d["lon"] for _, d in grafo.nodes(data=True)]
 
+    # Sin mapa de calles (tiles=None): el fondo son solo las localidades, sobre blanco.
     mapa = folium.Map(location=[sum(latitudes) / len(latitudes), sum(longitudes) / len(longitudes)],
-                      zoom_start=12, tiles="OpenStreetMap")
+                      zoom_start=12, tiles=None)
+    mapa.get_root().header.add_child(folium.Element("<style>.leaflet-container{background:#ffffff}</style>"))
 
     localidades = cargar_localidades()[["nombre", "color", "geometry"]]
     folium.GeoJson(
         localidades, name="Localidades",
         style_function=lambda f: {"fillColor": f["properties"]["color"], "color": "#3C3C3C",
-                                  "weight": 1, "fillOpacity": 0.35},
+                                  "weight": 1, "fillOpacity": ALPHA_MAPA},
         tooltip=folium.GeoJsonTooltip(fields=["nombre"], aliases=["Localidad:"]),
     ).add_to(mapa)
 
