@@ -3,11 +3,10 @@ import os
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from data.conexiones import conexiones
-from bfs import busqueda_anchura, construir_grafo
+from data.conexiones import construir_adyacencia
+from bfs import busqueda_anchura
 
-
-grafo = construir_grafo(conexiones)
+grafo = construir_adyacencia()
 
 print("\nCentros disponibles:")
 for centro in grafo:
