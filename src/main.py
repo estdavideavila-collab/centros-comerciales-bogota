@@ -5,6 +5,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from data.conexiones import construir_adyacencia
 from bfs import busqueda_anchura
+from mapa import generar_ruta
+from mapa_interactivo import generar_mapa_interactivo
 
 
 grafo = construir_adyacencia()
@@ -49,3 +51,10 @@ else:
             print(f"Paso {paso}: {visibles} ...")
         else:
             print(f"Paso {paso}: {estado_cola}")
+
+    # Imágenes en docs/. Cuando exista ucs.py se agregan también
+    # generar_ruta(ruta_ucs, "UCS") y generar_comparacion(ruta, ruta_ucs) de mapa.py.
+    print("\nGenerando imágenes en docs/ ...")
+    for archivo in generar_ruta(ruta, "BFS"):
+        print("Guardado:", archivo)
+    print("Guardado:", generar_mapa_interactivo(rutas={"BFS": ruta}))
