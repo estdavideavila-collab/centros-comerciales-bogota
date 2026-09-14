@@ -30,8 +30,10 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import shapely
+from matplotlib.collections import LineCollection, PatchCollection
 from matplotlib.lines import Line2D
-from matplotlib.patches import Rectangle
+from matplotlib.patches import PathPatch, Rectangle
+from matplotlib.path import Path as Trazo
 from shapely.geometry import LineString, Point, box
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -199,7 +201,8 @@ def _colores_localidades(localidades):
 # Geometría auxiliar
 # ---------------------------------------------------------------------------
 
-def _km(valor):
+def formato_km(valor):
+    """Distancia con coma decimal, como se escribe en español: 43,6 km."""
     return f"{valor:.1f} km".replace(".", ",")
 
 
@@ -238,13 +241,18 @@ def _caja_etiqueta(nodo, punto, tamano):
 
 
 def _obstaculos(grafo, pos, con_ampliacion, tamano_nombres=9):
-    """Todo lo que un nombre de localidad no debe tapar: nodos, aristas, sus etiquetas y la ampliación."""
+    """Todo lo que un nombre de localidad no debe tapar: nodos, aristas, sus etiquetas y la ampliación.
+
+    Van como piezas sueltas en un árbol espacial (STRtree): medir la distancia a la pieza
+    más cercana da lo mismo que medirla contra la unión de todas, pero es mucho más
+    rápido, porque la unión es un solo polígono con miles de vértices.
+    """
     geometrias = [Point(p).buffer(8 * PUNTOS_A_GRADOS) for p in pos.values()]
     geometrias += [LineString([pos[a], pos[b]]).buffer(3 * PUNTOS_A_GRADOS) for a, b in grafo.edges]
     geometrias += [_caja_etiqueta(nodo, p, tamano_nombres) for nodo, p in pos.items()]
     if con_ampliacion:
         geometrias.append(_caja_ampliacion())
-    return shapely.union_all(geometrias)
+    return shapely.STRtree(geometrias)
 
 
 def _punto_para_nombre(visible, texto, tamano, obstaculos):
@@ -255,6 +263,7 @@ def _punto_para_nombre(visible, texto, tamano, obstaculos):
     ninguna posición queda libre, se elige la que menos tapa.
     """
     mayor = max(getattr(visible, "geoms", [visible]), key=lambda parte: parte.area)
+    shapely.prepare(mayor)  # acelera las pruebas de contención, que se hacen miles de veces
     xmin, ymin, xmax, ymax = mayor.bounds
     xs, ys = np.meshgrid(np.arange(xmin, xmax, 0.0012), np.arange(ymin, ymax, 0.0012))
     xs, ys = xs.ravel(), ys.ravel()
@@ -267,11 +276,14 @@ def _punto_para_nombre(visible, texto, tamano, obstaculos):
     cajas = shapely.box(xs - ancho / 2, ys - alto / 2, xs + ancho / 2, ys + alto / 2)
     holgura = shapely.distance(cajas, mayor.boundary)
     if obstaculos is not None:
-        holgura = np.minimum(holgura, shapely.distance(cajas, obstaculos))
-        tapadas = holgura == 0
-        holgura[tapadas] = -shapely.area(shapely.intersection(cajas[tapadas], obstaculos))
+        (indices, _), distancias = obstaculos.query_nearest(cajas, return_distance=True, all_matches=False)
+        holgura[indices] = np.minimum(holgura[indices], distancias)
+        if not holgura.any():
+            # Ninguna posición queda libre: gana la que menos área tapa. Si hay alguna libre
+            # no hace falta calcularlo, porque una libre siempre le gana a una tapada.
+            holgura = -shapely.area(shapely.intersection(cajas, shapely.union_all(obstaculos.geometries)))
     # Caber entero en la localidad pesa más que cualquier holgura.
-    caben = shapely.within(cajas, mayor)
+    caben = shapely.contains(mayor, cajas)
     mejor = int(np.argmax(holgura + np.where(caben, 1.0, 0.0)))
     return Point(xs[mejor], ys[mejor]), bool(caben[mejor])
 
@@ -280,10 +292,31 @@ def _punto_para_nombre(visible, texto, tamano, obstaculos):
 # Capas de dibujo
 # ---------------------------------------------------------------------------
 
+def _dibujar_localidades(ax, localidades):
+    """Capas 0 y 1: relleno y bordes de las localidades.
+
+    Arma las mismas colecciones de Matplotlib que localidades.plot() y
+    localidades.boundary.plot(), pero sin el redibujado de la figura entera que
+    GeoPandas hace al final de cada .plot(): eran cuatro por imagen, y los del
+    recuadro ampliado repintaban todo el mapa ya dibujado.
+    """
+    parches, colores, bordes = [], [], []
+    # Normalizadas como las deja GeoPandas antes de dibujar (orden y sentido de los
+    # anillos); si no, el suavizado de los bordes cambia en algunos píxeles.
+    for relleno, borde, color in zip(localidades.geometry.normalize(), localidades.boundary.normalize(),
+                                     localidades["color"]):
+        for poligono in getattr(relleno, "geoms", [relleno]):
+            anillos = [np.asarray(anillo.coords)[:, :2] for anillo in (poligono.exterior, *poligono.interiors)]
+            parches.append(PathPatch(Trazo.make_compound_path(*(Trazo(a, closed=True) for a in anillos))))
+            colores.append(color)
+        bordes += [np.asarray(linea.coords)[:, :2] for linea in getattr(borde, "geoms", [borde])]
+    ax.add_collection(PatchCollection(parches, facecolor=colores, alpha=ALPHA_MAPA, linewidth=0, zorder=Z_RELLENO))
+    ax.add_collection(LineCollection(bordes, color=COLOR_BORDE_LOCALIDAD, linewidth=0.8, zorder=Z_BORDES))
+
+
 def dibujar_mapa_base(ax, localidades, obstaculos=None, con_nombres=True):
     """Capas 0 a 2: relleno, bordes y nombres de las localidades."""
-    localidades.plot(ax=ax, color=localidades["color"], alpha=ALPHA_MAPA, linewidth=0, zorder=Z_RELLENO)
-    localidades.boundary.plot(ax=ax, color=COLOR_BORDE_LOCALIDAD, linewidth=0.8, zorder=Z_BORDES)
+    _dibujar_localidades(ax, localidades)
     if not con_nombres:
         return
 
@@ -337,10 +370,10 @@ def _dibujar_distancias(ax, grafo, pos, aristas, tamano):
     for a, b in aristas:
         curva = _curvatura(a, b)
         if curva is None:
-            por_estilo["arc3"][(a, b)] = _km(grafo[a][b]["peso"])
+            por_estilo["arc3"][(a, b)] = formato_km(grafo[a][b]["peso"])
         else:
             origen, destino, rad = curva
-            por_estilo.setdefault(f"arc3,rad={rad}", {})[(origen, destino)] = _km(grafo[a][b]["peso"])
+            por_estilo.setdefault(f"arc3,rad={rad}", {})[(origen, destino)] = formato_km(grafo[a][b]["peso"])
 
     for estilo, etiquetas in por_estilo.items():
         if not etiquetas:
@@ -480,7 +513,7 @@ def _guardar(fig, ax, nombre, carpeta):
     return archivos
 
 
-def _validar_ruta(grafo, ruta):
+def validar_ruta(grafo, ruta):
     """Revisa que la ruta sea un camino real del grafo y devuelve su distancia total."""
     if not ruta:
         raise ValueError("La ruta está vacía")
@@ -545,13 +578,13 @@ def generar_ruta(ruta, algoritmo, grafo=None, localidades=None, carpeta=CARPETA_
     """
     grafo = validar_grafo() if grafo is None else grafo
     localidades = cargar_localidades() if localidades is None else localidades
-    distancia = _validar_ruta(grafo, ruta)
+    distancia = validar_ruta(grafo, ruta)
     conexiones = len(ruta) - 1
     return _figura_rutas(
         grafo, localidades,
         f"Ruta {algoritmo}: {ruta[0]} → {ruta[-1]}",
-        f"{DESCRIPCION_ALGORITMO[algoritmo]} · {conexiones} conexiones · {_km(distancia)}",
-        [(ruta, COLOR_RUTA[algoritmo], 7, f"{algoritmo}: {conexiones} conexiones · {_km(distancia)}")],
+        f"{DESCRIPCION_ALGORITMO[algoritmo]} · {conexiones} conexiones · {formato_km(distancia)}",
+        [(ruta, COLOR_RUTA[algoritmo], 7, f"{algoritmo}: {conexiones} conexiones · {formato_km(distancia)}")],
         f"ruta_{algoritmo.lower()}", carpeta,
     )
 
@@ -562,9 +595,9 @@ def generar_comparacion(ruta_bfs, ruta_ucs, grafo=None, localidades=None, carpet
     localidades = cargar_localidades() if localidades is None else localidades
     if (ruta_bfs[0], ruta_bfs[-1]) != (ruta_ucs[0], ruta_ucs[-1]):
         raise ValueError("BFS y UCS deben tener el mismo inicio y el mismo objetivo para compararse")
-    km_bfs, km_ucs = _validar_ruta(grafo, ruta_bfs), _validar_ruta(grafo, ruta_ucs)
-    resumen_bfs = f"BFS: {len(ruta_bfs) - 1} conexiones · {_km(km_bfs)}"
-    resumen_ucs = f"UCS: {len(ruta_ucs) - 1} conexiones · {_km(km_ucs)}"
+    km_bfs, km_ucs = validar_ruta(grafo, ruta_bfs), validar_ruta(grafo, ruta_ucs)
+    resumen_bfs = f"BFS: {len(ruta_bfs) - 1} conexiones · {formato_km(km_bfs)}"
+    resumen_ucs = f"UCS: {len(ruta_ucs) - 1} conexiones · {formato_km(km_ucs)}"
     # BFS va debajo y más ancha, así los tramos compartidos se ven de los dos colores.
     return _figura_rutas(
         grafo, localidades,

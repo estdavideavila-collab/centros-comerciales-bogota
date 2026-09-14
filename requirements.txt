@@ -7,4 +7,4 @@ matplotlib>=3.8    # imagenes estaticas del mapa
 geopandas>=1.0     # mapa de localidades
 shapely>=2.0       # geometrias (puntos, poligonos)
 numpy>=1.25
-folium>=0.17       # mapa interactivo (opcional)
+folium>=0.17       # mapa interactivo (lo genera main.py)
