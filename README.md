@@ -8,11 +8,15 @@ Modelar centros comerciales de Bogotá como nodos de un grafo y comparar diferen
 
 ## Algoritmos
 
+Dos no informadas, que solo miran el grafo:
+
 - Búsqueda en anchura (BFS): encuentra la ruta con menos conexiones.
-- Búsqueda de costo uniforme (UCS): encuentra la ruta con menor distancia total.
-- Búsqueda A*: encuentra la misma ruta óptima que UCS, pero expande menos nodos porque se guía
-  por la distancia en línea recta al destino. La heurística es admisible (una vía nunca es más
-  corta que la línea recta) y consistente, así que no pierde optimalidad.
+- Búsqueda de costo uniforme (UCS): encuentra la ruta con menor distancia total. Es la óptima en kilómetros.
+
+Dos informadas, que además usan una heurística h(n) —la distancia en línea recta al destino—:
+
+- Búsqueda voraz primero el mejor: ordena la cola por h(n). En cada paso se lanza hacia el centro comercial que esté más cerca del destino **en línea recta**, sin mirar cuánto lleva recorrido. Expande muchos menos nodos que UCS, pero su ruta no siempre es la más corta.
+- Búsqueda A*: ordena la cola por f(n) = g(n) + h(n), o sea combina lo ya recorrido con lo que falta. Encuentra la misma ruta óptima que UCS pero expandiendo menos nodos. La heurística es admisible (una vía nunca es más corta que la línea recta) y consistente, así que no pierde optimalidad.
 
 ## El grafo
 
@@ -36,19 +40,19 @@ Desde la raíz del proyecto:
 
 | Comando | Qué hace |
 |---|---|
-| `python src/main.py` | Pide el centro de inicio y el de destino, corre BFS, UCS y A*, imprime la comparación y genera en `docs/` las imágenes de las rutas y el mapa interactivo |
-| `python src/presentacion.py` | Lo mismo en consola, eligiendo los centros por número o por nombre, y abre el mapa con las dos rutas. No genera imágenes: es lo que corre el ejecutable |
+| `python src/main.py` | Pide el centro de inicio y el de destino, corre los cuatro algoritmos, imprime la comparación y genera en `docs/` las imágenes de las rutas y el mapa interactivo |
+| `python src/presentacion.py` | Lo mismo en consola, eligiendo los centros por número o por nombre, y abre el mapa con las cuatro rutas. No genera imágenes: es lo que corre el ejecutable |
 | `python src/mapa.py` | Comprueba que cada centro caiga en su localidad y genera `mapa_base` y `grafo_completo` |
 | `python src/mapa_interactivo.py` | Genera solo `docs/mapa_interactivo.html` |
 | `python data/conexiones.py` | Valida los datos del grafo: 40 nodos, 69 aristas y conexo |
 
 `main.py` sobrescribe las imágenes de `docs/` con la ruta que se elija.
 
-`docs/mapa_interactivo.html` se abre en el navegador y funciona sin internet. En el panel «Buscar ruta» se elige el punto A y el punto B, o se hace clic en un centro comercial, y el mapa muestra las rutas de BFS, UCS y A* con su comparación.
+`docs/mapa_interactivo.html` se abre en el navegador y funciona sin internet. En el panel «Buscar ruta» se elige el punto A y el punto B, o se hace clic en un centro comercial, y el mapa muestra las rutas de BFS, UCS, la voraz y A* con su comparación.
 
 ## Ejecutable para la exposición
 
-`CentrosComercialesBogota.exe` corre BFS, UCS y A* en consola y abre el mapa interactivo con las tres rutas. Funciona en Windows 10 u 11 sin instalar Python y sin internet.
+`CentrosComercialesBogota.exe` corre los cuatro algoritmos en consola y abre el mapa interactivo con las cuatro rutas. Funciona en Windows 10 u 11 sin instalar Python y sin internet.
 
 Para crearlo, con el entorno del proyecto activo:
 
@@ -71,11 +75,12 @@ centros-comerciales-bogota/
 ├── src/
 │   ├── bfs.py                # búsqueda en anchura
 │   ├── ucs.py                # búsqueda de costo uniforme
-│   ├── astar.py              # búsqueda A* (heurística: distancia en línea recta)
+│   ├── voraz.py              # búsqueda voraz primero el mejor, con la heurística de línea recta
+│   ├── astar.py              # búsqueda A*, con la misma heurística de línea recta
 │   ├── mapa.py               # imágenes PNG y SVG del grafo y de las rutas sobre las localidades
 │   ├── mapa_interactivo.py   # mapa HTML con buscador de rutas
 │   ├── main.py               # punto de entrada
-│   ├── presentacion.py       # programa del ejecutable: BFS, UCS y A* en consola y en el mapa
+│   ├── presentacion.py       # programa del ejecutable: los cuatro algoritmos en consola y en el mapa
 │   └── web/                  # Leaflet y jQuery, para que el mapa funcione sin internet
 ├── crear_ejecutable.py       # arma dist/CentrosComercialesBogota.exe
 ├── .gitignore
@@ -83,7 +88,7 @@ centros-comerciales-bogota/
 └── requirements.txt
 ```
 
-`data/centros.py` y `data/conexiones.py` son compartidos: BFS, UCS y A* deben correr sobre el mismo grafo, así que cualquier cambio ahí se avisa al grupo antes de hacerlo.
+`data/centros.py` y `data/conexiones.py` son compartidos: los cuatro algoritmos deben correr sobre el mismo grafo, así que cualquier cambio ahí se avisa al grupo antes de hacerlo.
 
 ## Fuentes de datos
 
