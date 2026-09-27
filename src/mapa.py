@@ -15,7 +15,8 @@ Uso desde main.py:
     from mapa import generar_grafo_completo, generar_ruta, generar_comparacion
     generar_ruta(ruta_bfs, "BFS")      # ruta = lista de nombres, del inicio al objetivo
     generar_ruta(ruta_ucs, "UCS")
-    generar_comparacion(ruta_bfs, ruta_ucs)
+    generar_ruta(ruta_astar, "A*")
+    generar_comparacion(ruta_bfs, ruta_ucs, ruta_astar)   # ruta_astar es opcional
 
 Ejecución directa (comprueba localidades y genera mapa base y grafo completo):
     python src/mapa.py
@@ -96,13 +97,16 @@ COLOR_ARISTA = "#4A4A4A"
 COLOR_ARISTA_FONDO = "#8C8C8C"
 COLOR_NODO = "#1B2A41"
 COLOR_NODO_FONDO = "#7A7A7A"
-COLOR_RUTA = {"BFS": "#E69F00", "UCS": "#0072B2"}
+COLOR_RUTA = {"BFS": "#E69F00", "UCS": "#0072B2", "A*": "#CC79A7"}
 COLOR_INICIO = "#009E73"
 COLOR_OBJETIVO = "#D55E00"
 DESCRIPCION_ALGORITMO = {
     "BFS": "Búsqueda primero en anchura: menor número de conexiones",
     "UCS": "Búsqueda de costo uniforme: menor distancia total",
+    "A*": "Búsqueda A*: menor distancia total, guiada por la línea recta al objetivo",
 }
+# A* lleva asterisco, que no sirve para un nombre de archivo.
+ARCHIVO_ALGORITMO = {"BFS": "bfs", "UCS": "ucs", "A*": "astar"}
 
 # Desplazamiento de la etiqueta (en puntos) y alineación. Elegidos para que cada
 # nombre caiga en un hueco entre sus aristas y no tape distancias de otras.
@@ -573,8 +577,8 @@ def generar_grafo_completo(grafo=None, localidades=None, carpeta=CARPETA_SALIDA)
 def generar_ruta(ruta, algoritmo, grafo=None, localidades=None, carpeta=CARPETA_SALIDA):
     """Dibuja una ruta resaltada sobre el grafo y la guarda como docs/ruta_<algoritmo>.
 
-    ruta: lista de nombres de nodo, del inicio al objetivo (lo que devuelve BFS o UCS).
-    algoritmo: "BFS" o "UCS"; define el color, el título y el nombre del archivo.
+    ruta: lista de nombres de nodo, del inicio al objetivo (lo que devuelve BFS, UCS o A*).
+    algoritmo: "BFS", "UCS" o "A*"; define el color, el título y el nombre del archivo.
     """
     grafo = validar_grafo() if grafo is None else grafo
     localidades = cargar_localidades() if localidades is None else localidades
@@ -585,25 +589,39 @@ def generar_ruta(ruta, algoritmo, grafo=None, localidades=None, carpeta=CARPETA_
         f"Ruta {algoritmo}: {ruta[0]} → {ruta[-1]}",
         f"{DESCRIPCION_ALGORITMO[algoritmo]} · {conexiones} conexiones · {formato_km(distancia)}",
         [(ruta, COLOR_RUTA[algoritmo], 7, f"{algoritmo}: {conexiones} conexiones · {formato_km(distancia)}")],
-        f"ruta_{algoritmo.lower()}", carpeta,
+        f"ruta_{ARCHIVO_ALGORITMO[algoritmo]}", carpeta,
     )
 
 
-def generar_comparacion(ruta_bfs, ruta_ucs, grafo=None, localidades=None, carpeta=CARPETA_SALIDA):
-    """Las rutas de BFS y UCS superpuestas en la misma imagen. Guarda docs/comparacion_rutas."""
+def generar_comparacion(ruta_bfs, ruta_ucs, ruta_astar=None, grafo=None, localidades=None,
+                        carpeta=CARPETA_SALIDA):
+    """Las rutas superpuestas en la misma imagen. Guarda docs/comparacion_rutas.
+
+    ruta_astar es opcional: sin ella la imagen compara BFS y UCS, como antes.
+    UCS y A* suelen dar la misma ruta (las dos son óptimas), así que A* se
+    dibuja encima y más delgada para que se vea el azul de UCS por debajo.
+    """
     grafo = validar_grafo() if grafo is None else grafo
     localidades = cargar_localidades() if localidades is None else localidades
-    if (ruta_bfs[0], ruta_bfs[-1]) != (ruta_ucs[0], ruta_ucs[-1]):
-        raise ValueError("BFS y UCS deben tener el mismo inicio y el mismo objetivo para compararse")
-    km_bfs, km_ucs = validar_ruta(grafo, ruta_bfs), validar_ruta(grafo, ruta_ucs)
-    resumen_bfs = f"BFS: {len(ruta_bfs) - 1} conexiones · {formato_km(km_bfs)}"
-    resumen_ucs = f"UCS: {len(ruta_ucs) - 1} conexiones · {formato_km(km_ucs)}"
-    # BFS va debajo y más ancha, así los tramos compartidos se ven de los dos colores.
+
+    # (nombre, ruta, ancho): de más ancha abajo a más delgada encima, así los
+    # tramos que comparten varias rutas muestran todos los colores.
+    candidatas = [("BFS", ruta_bfs, 14), ("UCS", ruta_ucs, 8), ("A*", ruta_astar, 4)]
+    algoritmos = [(nombre, ruta, ancho) for nombre, ruta, ancho in candidatas if ruta]
+
+    extremos = {(ruta[0], ruta[-1]) for _, ruta, _ in algoritmos}
+    if len(extremos) > 1:
+        raise ValueError("Todas las rutas deben tener el mismo inicio y el mismo objetivo para compararse")
+
+    resumenes = {
+        nombre: f"{nombre}: {len(ruta) - 1} conexiones · {formato_km(validar_ruta(grafo, ruta))}"
+        for nombre, ruta, _ in algoritmos
+    }
     return _figura_rutas(
         grafo, localidades,
-        f"BFS vs UCS: {ruta_bfs[0]} → {ruta_bfs[-1]}",
-        f"{resumen_bfs}   |   {resumen_ucs}",
-        [(ruta_bfs, COLOR_RUTA["BFS"], 12, resumen_bfs), (ruta_ucs, COLOR_RUTA["UCS"], 5, resumen_ucs)],
+        f"{' vs '.join(resumenes)}: {ruta_bfs[0]} → {ruta_bfs[-1]}",
+        "   |   ".join(resumenes.values()),
+        [(ruta, COLOR_RUTA[nombre], ancho, resumenes[nombre]) for nombre, ruta, ancho in algoritmos],
         "comparacion_rutas", carpeta,
     )
 

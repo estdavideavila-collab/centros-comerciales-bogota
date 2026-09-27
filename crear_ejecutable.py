@@ -1,6 +1,6 @@
 """Crea el ejecutable para la exposición: dist/CentrosComercialesBogota.exe (Windows).
 
-El ejecutable corre src/presentacion.py (BFS y UCS en consola) y lleva adentro el mapa
+El ejecutable corre src/presentacion.py (BFS, UCS y A* en consola) y lleva adentro el mapa
 interactivo, que funciona sin internet. En el otro computador no hace falta instalar
 Python ni nada más.
 
