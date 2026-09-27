@@ -15,7 +15,8 @@ Uso desde main.py:
     from mapa import generar_grafo_completo, generar_ruta, generar_comparacion
     generar_ruta(ruta_bfs, "BFS")      # ruta = lista de nombres, del inicio al objetivo
     generar_ruta(ruta_ucs, "UCS")
-    generar_comparacion(ruta_bfs, ruta_ucs)
+    generar_ruta(ruta_voraz, "Voraz")
+    generar_comparacion(ruta_bfs, ruta_ucs, ruta_voraz)
 
 Ejecución directa (comprueba localidades y genera mapa base y grafo completo):
     python src/mapa.py
@@ -96,12 +97,13 @@ COLOR_ARISTA = "#4A4A4A"
 COLOR_ARISTA_FONDO = "#8C8C8C"
 COLOR_NODO = "#1B2A41"
 COLOR_NODO_FONDO = "#7A7A7A"
-COLOR_RUTA = {"BFS": "#E69F00", "UCS": "#0072B2"}
+COLOR_RUTA = {"BFS": "#E69F00", "UCS": "#0072B2", "Voraz": "#CC79A7"}
 COLOR_INICIO = "#009E73"
 COLOR_OBJETIVO = "#D55E00"
 DESCRIPCION_ALGORITMO = {
     "BFS": "Búsqueda primero en anchura: menor número de conexiones",
     "UCS": "Búsqueda de costo uniforme: menor distancia total",
+    "Voraz": "Búsqueda voraz primero el mejor: se guía por la distancia en línea recta al destino",
 }
 
 # Desplazamiento de la etiqueta (en puntos) y alineación. Elegidos para que cada
@@ -573,8 +575,8 @@ def generar_grafo_completo(grafo=None, localidades=None, carpeta=CARPETA_SALIDA)
 def generar_ruta(ruta, algoritmo, grafo=None, localidades=None, carpeta=CARPETA_SALIDA):
     """Dibuja una ruta resaltada sobre el grafo y la guarda como docs/ruta_<algoritmo>.
 
-    ruta: lista de nombres de nodo, del inicio al objetivo (lo que devuelve BFS o UCS).
-    algoritmo: "BFS" o "UCS"; define el color, el título y el nombre del archivo.
+    ruta: lista de nombres de nodo, del inicio al objetivo (lo que devuelve BFS, UCS o la voraz).
+    algoritmo: "BFS", "UCS" o "Voraz"; define el color, el título y el nombre del archivo.
     """
     grafo = validar_grafo() if grafo is None else grafo
     localidades = cargar_localidades() if localidades is None else localidades
@@ -589,21 +591,35 @@ def generar_ruta(ruta, algoritmo, grafo=None, localidades=None, carpeta=CARPETA_
     )
 
 
-def generar_comparacion(ruta_bfs, ruta_ucs, grafo=None, localidades=None, carpeta=CARPETA_SALIDA):
-    """Las rutas de BFS y UCS superpuestas en la misma imagen. Guarda docs/comparacion_rutas."""
+def generar_comparacion(ruta_bfs, ruta_ucs, ruta_voraz=None, grafo=None, localidades=None,
+                        carpeta=CARPETA_SALIDA):
+    """Las rutas de los algoritmos superpuestas en la misma imagen. Guarda docs/comparacion_rutas.
+
+    ruta_voraz es opcional: sin ella la imagen compara solo BFS y UCS, como antes.
+    """
     grafo = validar_grafo() if grafo is None else grafo
     localidades = cargar_localidades() if localidades is None else localidades
-    if (ruta_bfs[0], ruta_bfs[-1]) != (ruta_ucs[0], ruta_ucs[-1]):
-        raise ValueError("BFS y UCS deben tener el mismo inicio y el mismo objetivo para compararse")
-    km_bfs, km_ucs = validar_ruta(grafo, ruta_bfs), validar_ruta(grafo, ruta_ucs)
-    resumen_bfs = f"BFS: {len(ruta_bfs) - 1} conexiones · {formato_km(km_bfs)}"
-    resumen_ucs = f"UCS: {len(ruta_ucs) - 1} conexiones · {formato_km(km_ucs)}"
-    # BFS va debajo y más ancha, así los tramos compartidos se ven de los dos colores.
+
+    candidatas = [("BFS", ruta_bfs, 14), ("UCS", ruta_ucs, 4), ("Voraz", ruta_voraz, 8)]
+    rutas = [(algoritmo, ruta, ancho) for algoritmo, ruta, ancho in candidatas if ruta is not None]
+
+    extremos = {(ruta[0], ruta[-1]) for _, ruta, _ in rutas}
+    if len(extremos) > 1:
+        raise ValueError("Las rutas deben tener el mismo inicio y el mismo objetivo para compararse")
+
+    capas, resumenes = [], []
+    for algoritmo, ruta, ancho in rutas:
+        km = validar_ruta(grafo, ruta)
+        resumen = f"{algoritmo}: {len(ruta) - 1} conexiones · {formato_km(km)}"
+        capas.append((ruta, COLOR_RUTA[algoritmo], ancho, resumen))
+        resumenes.append(resumen)
+
     return _figura_rutas(
         grafo, localidades,
-        f"BFS vs UCS: {ruta_bfs[0]} → {ruta_bfs[-1]}",
-        f"{resumen_bfs}   |   {resumen_ucs}",
-        [(ruta_bfs, COLOR_RUTA["BFS"], 12, resumen_bfs), (ruta_ucs, COLOR_RUTA["UCS"], 5, resumen_ucs)],
+        f"{' vs '.join(algoritmo for algoritmo, _, _ in rutas)}: {ruta_bfs[0]} → {ruta_bfs[-1]}",
+        "   |   ".join(resumenes),
+        # De la más ancha a la más delgada: así los tramos compartidos se ven de todos los colores.
+        sorted(capas, key=lambda capa: -capa[2]),
         "comparacion_rutas", carpeta,
     )
 

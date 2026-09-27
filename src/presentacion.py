@@ -1,9 +1,9 @@
-"""Programa para la exposición: BFS y UCS entre dos centros comerciales, en consola y en el mapa.
+"""Programa para la exposición: BFS, UCS y búsqueda voraz entre dos centros, en consola y en el mapa.
 
 Es el que se empaqueta como ejecutable (ver crear_ejecutable.py). Corre los mismos
-algoritmos que main.py (src/bfs.py y src/ucs.py) sobre el mismo grafo, pero:
+algoritmos que main.py (src/bfs.py, src/ucs.py y src/voraz.py) sobre el mismo grafo, pero:
   - los centros se eligen por número o por nombre, sin importar tildes ni mayúsculas;
-  - abre el mapa interactivo con las dos rutas dibujadas, y funciona sin internet;
+  - abre el mapa interactivo con las tres rutas dibujadas, y funciona sin internet;
   - se pueden probar varias rutas sin volver a abrir el programa;
   - no genera las imágenes de docs/, así el ejecutable no necesita GeoPandas ni Matplotlib.
 
@@ -28,6 +28,7 @@ if str(RAIZ) not in sys.path:
 from data.conexiones import construir_adyacencia  # noqa: E402
 from bfs import busqueda_anchura  # noqa: E402
 from ucs import busqueda_costo_uniforme, costo_ruta, desglose_ruta  # noqa: E402
+from voraz import busqueda_voraz, distancia_recta  # noqa: E402
 
 LINEA = "=" * 70
 
@@ -122,26 +123,38 @@ def mostrar_busqueda(grafo, titulo, ruta, costo, orden, historial, titulo_cola, 
         print(f"  Paso {paso:>2}: {', '.join(elementos[:6])}{resto}")
 
 
-def mostrar_comparacion(bfs, ucs):
-    """Tabla BFS vs UCS y la conclusión. bfs y ucs son (ruta, costo, orden)."""
+def mostrar_comparacion(bfs, ucs, voraz):
+    """Tabla BFS vs UCS vs Voraz y las conclusiones. Cada argumento es (ruta, costo, orden)."""
     (ruta_bfs, costo_bfs, orden_bfs), (ruta_ucs, costo_ucs, orden_ucs) = bfs, ucs
+    ruta_voraz, costo_voraz, orden_voraz = voraz
     print("\n" + LINEA)
-    print("COMPARACIÓN BFS vs UCS")
+    print("COMPARACIÓN BFS vs UCS vs VORAZ")
     print(LINEA)
-    print(f"  {'':<22} {'BFS':>12} {'UCS':>12}")
-    print(f"  {'Conexiones':<22} {len(ruta_bfs) - 1:>12} {len(ruta_ucs) - 1:>12}")
-    print(f"  {'Distancia total':<22} {_km(costo_bfs):>12} {_km(costo_ucs):>12}")
-    print(f"  {'Nodos expandidos':<22} {len(orden_bfs):>12} {len(orden_ucs):>12}")
+    print(f"  {'':<22} {'BFS':>12} {'UCS':>12} {'Voraz':>12}")
+    print(f"  {'Conexiones':<22} {len(ruta_bfs) - 1:>12} {len(ruta_ucs) - 1:>12}"
+          f" {len(ruta_voraz) - 1:>12}")
+    print(f"  {'Distancia total':<22} {_km(costo_bfs):>12} {_km(costo_ucs):>12}"
+          f" {_km(costo_voraz):>12}")
+    print(f"  {'Nodos expandidos':<22} {len(orden_bfs):>12} {len(orden_ucs):>12}"
+          f" {len(orden_voraz):>12}")
     print()
+    _conclusion_bfs_ucs(bfs, ucs)
+    print()
+    _conclusion_voraz(ucs, voraz)
+
+
+def _conclusion_bfs_ucs(bfs, ucs):
+    """Qué separa la ruta de BFS de la de UCS."""
+    (ruta_bfs, costo_bfs, _), (ruta_ucs, costo_ucs, _) = bfs, ucs
     if ruta_bfs == ruta_ucs:
-        print("Los dos algoritmos encontraron LA MISMA ruta: la de menos conexiones")
+        print("BFS y UCS encontraron LA MISMA ruta: la de menos conexiones")
         print("también es la de menor distancia.")
         return
     diferencia = round(costo_bfs - costo_ucs, 1)
     if diferencia == 0:
         print("Las rutas son DISTINTAS pero miden lo mismo: hay un empate en distancia.")
         return
-    print(f"Las rutas son DISTINTAS. UCS ahorra {_km(diferencia)} frente a BFS.")
+    print(f"Las rutas de BFS y UCS son DISTINTAS. UCS ahorra {_km(diferencia)} frente a BFS.")
     extra = len(ruta_ucs) - len(ruta_bfs)
     if extra > 0:
         print("BFS escogió la ruta con menos conexiones sin mirar las distancias;")
@@ -151,8 +164,26 @@ def mostrar_comparacion(bfs, ucs):
         print("y BFS se quedó con el primero que encontró.")
 
 
+def _conclusion_voraz(ucs, voraz):
+    """Qué ganó y qué perdió la voraz frente a UCS, que es la óptima."""
+    (ruta_ucs, costo_ucs, orden_ucs), (ruta_voraz, costo_voraz, orden_voraz) = ucs, voraz
+    menos = len(orden_ucs) - len(orden_voraz)
+    expansiones = "1 nodo menos" if menos == 1 else f"{menos} nodos menos"
+    if ruta_voraz == ruta_ucs:
+        print(f"La voraz llegó a la MISMA ruta óptima que UCS expandiendo {expansiones}:")
+        print("la heurística la llevó derecho al destino, sin explorar en todas las direcciones.")
+        return
+    de_mas = round(costo_voraz - costo_ucs, 1)
+    if de_mas <= 0:
+        print("La voraz encontró otra ruta que mide lo mismo que la de UCS: hay un empate.")
+        return
+    print(f"La voraz expandió {expansiones} que UCS, pero su ruta cuesta {_km(de_mas)} MÁS.")
+    print("Ese es su precio: mira solo lo que falta (h) e ignora lo ya recorrido (g),")
+    print("así que no garantiza la ruta más corta.")
+
+
 def mostrar_resultados(grafo, inicio, objetivo):
-    """Corre BFS y UCS e imprime todo. Devuelve False si no hay camino entre los dos centros."""
+    """Corre los tres algoritmos e imprime todo. Devuelve False si no hay camino entre los centros."""
     ruta_bfs, orden_bfs, cola_bfs = busqueda_anchura(grafo, inicio, objetivo)
     if ruta_bfs is None:
         print("\nNo se encontró una ruta entre los centros seleccionados.")
@@ -167,12 +198,21 @@ def mostrar_resultados(grafo, inicio, objetivo):
                      "Evolución de la cola de prioridad, de menor a mayor costo acumulado (km)",
                      lambda entrada: f"{entrada[1]} ({_numero(entrada[0])})")
 
-    mostrar_comparacion((ruta_bfs, costo_bfs, orden_bfs), (ruta_ucs, costo_ucs, orden_ucs))
+    ruta_voraz, costo_voraz, orden_voraz, frontera_voraz = busqueda_voraz(grafo, inicio, objetivo)
+    mostrar_busqueda(grafo, "BÚSQUEDA VORAZ PRIMERO EL MEJOR - se guía por la DISTANCIA EN LÍNEA RECTA",
+                     ruta_voraz, costo_voraz, orden_voraz, frontera_voraz,
+                     "Evolución de la cola de prioridad, de menor a mayor distancia estimada que FALTA (km)",
+                     lambda entrada: f"{entrada[1]} ({_numero(entrada[0])})")
+    print(f"\nh({inicio}) = {_km(distancia_recta(inicio, objetivo))} en línea recta hasta {objetivo}: "
+          "eso es todo lo que la voraz mira para decidir.")
+
+    mostrar_comparacion((ruta_bfs, costo_bfs, orden_bfs), (ruta_ucs, costo_ucs, orden_ucs),
+                        (ruta_voraz, costo_voraz, orden_voraz))
     return True
 
 
 def abrir_mapa(inicio, objetivo):
-    """Abre en el navegador el mapa interactivo con las rutas de BFS y UCS entre inicio y objetivo."""
+    """Abre en el navegador el mapa interactivo con las tres rutas entre inicio y objetivo."""
     if not MAPA.exists():
         print(f"\nNo encontré el mapa interactivo ({MAPA}). Se genera con: python src/mapa_interactivo.py")
         return
@@ -181,7 +221,7 @@ def abrir_mapa(inicio, objetivo):
     archivo = Path(tempfile.gettempdir()) / "centros_comerciales_bogota_mapa.html"
     archivo.write_text(html, encoding="utf-8")
     if webbrowser.open(archivo.as_uri()):
-        print("\nSe abrió el mapa en el navegador con las dos rutas.")
+        print("\nSe abrió el mapa en el navegador con las tres rutas.")
     else:
         print(f"\nNo se pudo abrir el navegador. Abre este archivo a mano: {archivo}")
 
@@ -191,7 +231,7 @@ def main():
     centros = sorted(grafo, key=_clave)
     conexiones = sum(len(vecinos) for vecinos in grafo.values()) // 2
     print(LINEA)
-    print("CENTROS COMERCIALES DE BOGOTÁ - búsquedas en grafos: BFS vs UCS")
+    print("CENTROS COMERCIALES DE BOGOTÁ - búsquedas en grafos: BFS vs UCS vs Voraz")
     print(LINEA)
     print(f"{len(grafo)} centros comerciales y {conexiones} conexiones. El peso de cada conexión")
     print("es la distancia por vía en carro, en kilómetros.")

@@ -7,11 +7,11 @@ las coordenadas son aproximadas y sobre las calles reales los puntos se ven corr
 
 Trae además el panel "Buscar ruta": se elige el punto A (inicio) y el punto B
 (destino), en las listas o con los botones del recuadro de cada centro, y el
-navegador corre BFS y UCS, dibuja las dos rutas y muestra lo mismo que main.py:
-ruta, conexiones, km, costo tramo a tramo, orden de visita, evolución de la cola
-y la comparación. Los algoritmos están en JavaScript copiados paso a paso de
-src/bfs.py y src/ucs.py, sobre el mismo grafo y con el mismo orden de vecinos,
-así que dan exactamente las mismas rutas.
+navegador corre BFS, UCS y la búsqueda voraz, dibuja las tres rutas y muestra lo
+mismo que main.py: ruta, conexiones, km, costo tramo a tramo, orden de visita,
+evolución de la cola y la comparación. Los algoritmos están en JavaScript copiados
+paso a paso de src/bfs.py, src/ucs.py y src/voraz.py, sobre el mismo grafo y con el
+mismo orden de vecinos, así que dan exactamente las mismas rutas.
 
 Funciona sin internet: Leaflet y jQuery van dentro del HTML (copiados en src/web/),
 en vez de enlazarse desde un CDN como hace Folium. El ejecutable de la exposición
@@ -20,7 +20,7 @@ DATOS, así que el formato de esos dos campos no debe cambiar.
 
 Uso desde main.py:
     from mapa_interactivo import generar_mapa_interactivo
-    generar_mapa_interactivo(rutas={"BFS": ruta_bfs, "UCS": ruta_ucs})
+    generar_mapa_interactivo(rutas={"BFS": ruta_bfs, "UCS": ruta_ucs, "Voraz": ruta_voraz})
 El HTML abre con el inicio y el destino de esas rutas ya elegidos.
 
 Ejecución directa (sin inicio ni destino elegidos):
@@ -122,7 +122,7 @@ _PLANTILLA_PANEL = r"""
 
 {% macro html(this, kwargs) %}
 <details id="rutas-panel" open>
-    <summary>Buscar ruta (BFS y UCS)</summary>
+    <summary>Buscar ruta (BFS, UCS y voraz)</summary>
     <div class="rutas-cuerpo">
         <label>Punto A · inicio
             <select id="rutas-inicio"><option value="">— Elige un centro comercial —</option></select>
@@ -147,7 +147,7 @@ _PLANTILLA_PANEL = r"""
     var control = {{ this.control }};
     var capaCentros = {{ this.centros }};
 
-    // ---- Mismos algoritmos que src/bfs.py y src/ucs.py ----
+    // ---- Mismos algoritmos que src/bfs.py, src/ucs.py y src/voraz.py ----
     function redondear(x) {
         return Number(x.toFixed(1));
     }
@@ -219,6 +219,57 @@ _PLANTILLA_PANEL = r"""
         return {ruta: null, costo: Infinity, ordenVisita: ordenVisita, historial: historialFrontera};
     }
 
+    // Heurística de src/voraz.py: distancia en línea recta (Haversine) entre dos
+    // centros, en km. Nunca sobreestima la distancia por vía.
+    function distanciaRecta(a, b) {
+        var RADIO = 6371;
+        var rad = Math.PI / 180;
+        var lat1 = DATOS.coords[a][0], lon1 = DATOS.coords[a][1];
+        var lat2 = DATOS.coords[b][0], lon2 = DATOS.coords[b][1];
+        var dlat = (lat2 - lat1) * rad;
+        var dlon = (lon2 - lon1) * rad;
+        var h = Math.sin(dlat / 2) * Math.sin(dlat / 2) +
+                Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dlon / 2) * Math.sin(dlon / 2);
+        return 2 * RADIO * Math.asin(Math.sqrt(h));
+    }
+
+    function busquedaVoraz(grafo, inicio, objetivo) {
+        // Igual que UCS, pero la cola se ordena por la heurística h(n) —lo que FALTA—
+        // en vez del costo acumulado g(n) —lo ya recorrido—. Por eso no es óptima.
+        var contador = 0;
+        var frontera = [[distanciaRecta(inicio, objetivo), contador, [inicio]]];
+        var expandidos = new Set();
+        var ordenVisita = [];
+        var historialFrontera = [];
+
+        while (frontera.length) {
+            frontera.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
+            historialFrontera.push(frontera.map(function (e) { return [redondear(e[0]), e[2][e[2].length - 1]]; }));
+
+            var ruta = frontera.shift()[2];
+            var nodoActual = ruta[ruta.length - 1];
+
+            if (expandidos.has(nodoActual)) {
+                continue;
+            }
+            expandidos.add(nodoActual);
+            ordenVisita.push(nodoActual);
+
+            if (nodoActual === objetivo) {
+                return {ruta: ruta, costo: costoRuta(grafo, ruta), ordenVisita: ordenVisita,
+                        historial: historialFrontera};
+            }
+
+            Object.keys(grafo[nodoActual] || {}).forEach(function (vecino) {
+                if (!expandidos.has(vecino)) {
+                    contador += 1;
+                    frontera.push([distanciaRecta(vecino, objetivo), contador, ruta.concat([vecino])]);
+                }
+            });
+        }
+        return {ruta: null, costo: Infinity, ordenVisita: ordenVisita, historial: historialFrontera};
+    }
+
     function costoRuta(grafo, ruta) {
         var total = 0;
         for (var i = 1; i < ruta.length; i++) {
@@ -254,9 +305,14 @@ _PLANTILLA_PANEL = r"""
         mapa.zoomControl.setPosition("bottomright");
     }
 
-    var capas = {BFS: L.layerGroup().addTo(mapa), UCS: L.layerGroup().addTo(mapa)};
-    control.addOverlay(capas.BFS, "Ruta BFS");
-    control.addOverlay(capas.UCS, "Ruta UCS");
+    // Ancho de la línea de cada ruta: la más ancha se dibuja primero y queda debajo,
+    // así los tramos que comparten dos algoritmos se ven de los dos colores.
+    var ANCHOS = [["BFS", 11, 0.85], ["Voraz", 7, 0.9], ["UCS", 4, 1]];
+    var capas = {};
+    ANCHOS.forEach(function (a) {
+        capas[a[0]] = L.layerGroup().addTo(mapa);
+        control.addOverlay(capas[a[0]], "Ruta " + a[0]);
+    });
     var capaExtremos = L.layerGroup().addTo(mapa);
 
     function numero(v) {
@@ -286,13 +342,11 @@ _PLANTILLA_PANEL = r"""
     }
 
     function dibujar(resultados, inicio, objetivo) {
-        capas.BFS.clearLayers();
-        capas.UCS.clearLayers();
+        Object.keys(capas).forEach(function (nombre) { capas[nombre].clearLayers(); });
         capaExtremos.clearLayers();
 
         if (resultados) {
-            // BFS ancha debajo y UCS delgada encima: si coinciden en un tramo, se ven las dos.
-            [["BFS", 9, 0.85], ["UCS", 4, 1]].forEach(function (a) {
+            ANCHOS.forEach(function (a) {
                 var r = resultados[a[0]];
                 L.polyline(r.ruta.map(function (n) { return DATOS.coords[n]; }),
                            {color: DATOS.colores[a[0]], weight: a[1], opacity: a[2]})
@@ -336,13 +390,14 @@ _PLANTILLA_PANEL = r"""
 
     function conclusion(bfs, ucs) {
         if (JSON.stringify(bfs.ruta) === JSON.stringify(ucs.ruta)) {
-            return "Ambos algoritmos encontraron <b>la misma ruta</b>: la de menos conexiones también es la de menor distancia.";
+            return "BFS y UCS encontraron <b>la misma ruta</b>: la de menos conexiones también es la de menor distancia.";
         }
         var diferencia = redondear(bfs.costo - ucs.costo);
         if (diferencia === 0) {
             return "Las rutas son distintas pero miden lo mismo: hay un empate en distancia.";
         }
-        var texto = "Las rutas son <b>distintas</b>. UCS ahorra <b>" + formatoKm(diferencia) + "</b> frente a BFS. ";
+        var texto = "Las rutas de BFS y UCS son <b>distintas</b>. UCS ahorra <b>" + formatoKm(diferencia) +
+            "</b> frente a BFS. ";
         var extra = ucs.ruta.length - bfs.ruta.length;
         if (extra > 0) {
             return texto + "BFS escogió la ruta con menos conexiones sin mirar las distancias; UCS aceptó " +
@@ -351,16 +406,32 @@ _PLANTILLA_PANEL = r"""
         return texto + "Con el mismo número de conexiones, UCS escogió el camino más corto y BFS se quedó con el primero que encontró.";
     }
 
-    function comparacion(bfs, ucs) {
-        function fila(nombre, a, b) {
-            return "<tr><td>" + nombre + '</td><td class="num">' + a + '</td><td class="num">' + b + "</td></tr>";
+    function conclusionVoraz(ucs, voraz) {
+        var menos = ucs.orden.length - voraz.orden.length;
+        var expansiones = "<b>" + menos + (menos === 1 ? " nodo menos</b>" : " nodos menos</b>");
+        if (JSON.stringify(voraz.ruta) === JSON.stringify(ucs.ruta)) {
+            return "La voraz llegó a la <b>misma ruta óptima</b> que UCS expandiendo " + expansiones +
+                ": la heurística la llevó derecho al destino, sin explorar en todas las direcciones.";
         }
-        return '<section class="rutas-comparacion"><h3>Comparación BFS vs UCS</h3><table>' +
-            '<tr><th></th><th class="num">BFS</th><th class="num">UCS</th></tr>' +
-            fila("Conexiones", bfs.ruta.length - 1, ucs.ruta.length - 1) +
-            fila("Distancia total", formatoKm(bfs.costo), formatoKm(ucs.costo)) +
-            fila("Nodos expandidos", bfs.orden.length, ucs.orden.length) +
-            "</table><p>" + conclusion(bfs, ucs) + "</p></section>";
+        var deMas = redondear(voraz.costo - ucs.costo);
+        if (deMas <= 0) {
+            return "La voraz encontró otra ruta que mide lo mismo que la de UCS: hay un empate.";
+        }
+        return "La voraz expandió " + expansiones + " que UCS, pero su ruta cuesta <b>" + formatoKm(deMas) +
+            " más</b>: mira solo lo que falta (h) e ignora lo ya recorrido (g), así que no garantiza la ruta más corta.";
+    }
+
+    function comparacion(bfs, ucs, voraz) {
+        function fila(nombre, a, b, c) {
+            return "<tr><td>" + nombre + '</td><td class="num">' + a + '</td><td class="num">' + b +
+                '</td><td class="num">' + c + "</td></tr>";
+        }
+        return '<section class="rutas-comparacion"><h3>Comparación BFS vs UCS vs Voraz</h3><table>' +
+            '<tr><th></th><th class="num">BFS</th><th class="num">UCS</th><th class="num">Voraz</th></tr>' +
+            fila("Conexiones", bfs.ruta.length - 1, ucs.ruta.length - 1, voraz.ruta.length - 1) +
+            fila("Distancia total", formatoKm(bfs.costo), formatoKm(ucs.costo), formatoKm(voraz.costo)) +
+            fila("Nodos expandidos", bfs.orden.length, ucs.orden.length, voraz.orden.length) +
+            "</table><p>" + conclusion(bfs, ucs) + "</p><p>" + conclusionVoraz(ucs, voraz) + "</p></section>";
     }
 
     function nota(texto) {
@@ -390,17 +461,22 @@ _PLANTILLA_PANEL = r"""
             return;
         }
         var ucs = busquedaCostoUniforme(grafo, inicio, objetivo);
+        var voraz = busquedaVoraz(grafo, inicio, objetivo);
 
         var resultados = {
             BFS: {ruta: bfs.ruta, costo: costoRuta(grafo, bfs.ruta), orden: bfs.ordenVisita, historial: bfs.historial},
             UCS: {ruta: ucs.ruta, costo: ucs.costo, orden: ucs.ordenVisita, historial: ucs.historial},
+            Voraz: {ruta: voraz.ruta, costo: voraz.costo, orden: voraz.ordenVisita, historial: voraz.historial},
         };
         dibujar(resultados, inicio, objetivo);
         salida.innerHTML =
             seccion("BFS", resultados.BFS, "Evolución de la cola FIFO", esc) +
             seccion("UCS", resultados.UCS, "Evolución de la cola de prioridad (costo acumulado)",
                     function (e) { return esc(e[1]) + " (" + numero(e[0]) + ")"; }) +
-            comparacion(resultados.BFS, resultados.UCS);
+            seccion("Voraz", resultados.Voraz,
+                    "Evolución de la cola de prioridad (distancia en línea recta que falta)",
+                    function (e) { return esc(e[1]) + " (" + numero(e[0]) + ")"; }) +
+            comparacion(resultados.BFS, resultados.UCS, resultados.Voraz);
     }
 
     selInicio.addEventListener("change", buscar);
@@ -469,7 +545,7 @@ class _PanelRutas(folium.MacroElement):
 def generar_mapa_interactivo(grafo=None, rutas=None, carpeta=CARPETA_SALIDA):
     """Guarda docs/mapa_interactivo.html y devuelve su ruta.
 
-    rutas: diccionario opcional {"BFS": [...], "UCS": [...]} con listas de nombres,
+    rutas: diccionario opcional {"BFS": [...], "UCS": [...], "Voraz": [...]} con listas de nombres,
     del inicio al objetivo. El HTML abre con ese inicio y ese destino ya elegidos en
     el panel "Buscar ruta"; desde el navegador se puede elegir cualquier otro par.
     """
