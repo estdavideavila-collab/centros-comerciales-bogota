@@ -220,7 +220,7 @@ _PLANTILLA_PANEL = r"""
     }
 
     // Heurística de src/voraz.py: distancia en línea recta (Haversine) entre dos
-    // centros, en km. Nunca sobreestima la distancia por vía.
+    // centros, en km. Ninguna ruta por calles puede ser más corta.
     function distanciaRecta(a, b) {
         var RADIO = 6371;
         var rad = Math.PI / 180;
@@ -238,6 +238,8 @@ _PLANTILLA_PANEL = r"""
         // en vez del costo acumulado g(n) —lo ya recorrido—. Por eso no es óptima.
         var contador = 0;
         var frontera = [[distanciaRecta(inicio, objetivo), contador, [inicio]]];
+        // Cada nodo entra una sola vez a la frontera: su h no depende del camino.
+        var enFrontera = new Set([inicio]);
         var expandidos = new Set();
         var ordenVisita = [];
         var historialFrontera = [];
@@ -248,10 +250,8 @@ _PLANTILLA_PANEL = r"""
 
             var ruta = frontera.shift()[2];
             var nodoActual = ruta[ruta.length - 1];
+            enFrontera.delete(nodoActual);
 
-            if (expandidos.has(nodoActual)) {
-                continue;
-            }
             expandidos.add(nodoActual);
             ordenVisita.push(nodoActual);
 
@@ -261,8 +261,9 @@ _PLANTILLA_PANEL = r"""
             }
 
             Object.keys(grafo[nodoActual] || {}).forEach(function (vecino) {
-                if (!expandidos.has(vecino)) {
+                if (!expandidos.has(vecino) && !enFrontera.has(vecino)) {
                     contador += 1;
+                    enFrontera.add(vecino);
                     frontera.push([distanciaRecta(vecino, objetivo), contador, ruta.concat([vecino])]);
                 }
             });

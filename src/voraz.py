@@ -16,10 +16,16 @@ más larga en kilómetros: cae en trampas geográficas, centros comerciales que 
 línea recta quedan cerquísima del destino pero están mal conectados por vía.
 
 La heurística es la distancia en LÍNEA RECTA (fórmula de Haversine) entre las
-coordenadas de data/centros.py. Nunca sobreestima el costo real, porque las
-distancias de data/conexiones.py se estimaron como Haversine x 1.30: la línea
-recta siempre es menor o igual que la distancia por vía. Multiplicar h por una
-constante positiva no cambiaría la ruta, solo los números que se muestran.
+coordenadas de data/centros.py. Las distancias de data/conexiones.py son por vía
+(OSRM), y ninguna ruta por calles puede ser más corta que la línea recta; con los
+datos actuales se comprobó en los 1560 pares que h(n) nunca supera el costo real
+(es admisible) y que h(a) <= c(a, b) + h(b) en toda arista (es consistente). Eso
+no vuelve óptima a la voraz: solo le importaría a A*. Multiplicar h por una
+constante positiva no cambia la ruta, solo los números que se muestran.
+
+Sigue la búsqueda en grafo de Russell y Norvig (AIMA, best_first_graph_search con
+f = h): la prueba de objetivo se hace al expandir, los nodos expandidos no se
+vuelven a abrir y cada nodo entra una sola vez a la frontera.
 
 Uso:
     from voraz import busqueda_voraz
@@ -47,9 +53,10 @@ def distancia_recta(origen, destino):
     latitudes y longitudes en grados, restarlas sin más daría un número sin
     sentido físico, porque un grado de longitud no mide lo mismo que uno de
     latitud. Es la distancia "en avión": ninguna ruta por calles puede ser menor.
+    Solo sirve para los centros de data/centros.py, que son los que tienen coordenadas.
     """
-    lat1, lon1 = NODOS[origen][0], NODOS[origen][1]
-    lat2, lon2 = NODOS[destino][0], NODOS[destino][1]
+    lat1, lon1 = NODOS[origen][:2]
+    lat2, lon2 = NODOS[destino][:2]
 
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
@@ -87,8 +94,16 @@ def busqueda_voraz(grafo, inicio, objetivo, heuristica=distancia_recta):
     contador = 0
     frontera = [(heuristica(inicio, objetivo), contador, [inicio])]
 
-    # Nodos ya expandidos. Sin este conjunto la voraz puede quedarse dando
-    # vueltas entre dos nodos vecinos que se apuntan mutuamente al objetivo.
+    # Nodos que esperan en la frontera. Cada uno entra UNA sola vez: su prioridad
+    # h(n) no depende del camino por el que se llegó, así que una segunda entrada
+    # tendría la misma prioridad y solo repetiría el nombre en la cola. Se queda
+    # con el primer camino encontrado, igual que en AIMA.
+    en_frontera = {inicio}
+
+    # Nodos ya expandidos. Sin este conjunto la voraz se queda dando vueltas: hacia
+    # Nuestro Bogotá, Titán Plaza queda a 2,1 km en línea recta pero no conecta con
+    # él; su vecino más cercano al destino es Diverplaza, y el de Diverplaza es otra
+    # vez Titán Plaza. Titán -> Diverplaza -> Titán -> ... para siempre.
     expandidos = set()
 
     orden_visita = []
@@ -104,9 +119,7 @@ def busqueda_voraz(grafo, inicio, objetivo, heuristica=distancia_recta):
         # objetivo. El costo acumulado hasta él no se mira: esa es la apuesta.
         _, _, ruta = heapq.heappop(frontera)
         nodo_actual = ruta[-1]
-
-        if nodo_actual in expandidos:
-            continue
+        en_frontera.remove(nodo_actual)
 
         expandidos.add(nodo_actual)
         orden_visita.append(nodo_actual)
@@ -119,8 +132,9 @@ def busqueda_voraz(grafo, inicio, objetivo, heuristica=distancia_recta):
         # Generar sucesores: cada vecino entra con SU heurística, no con la suma
         # del camino. Por eso la voraz puede "retroceder" en kilómetros sin notarlo.
         for vecino in grafo.get(nodo_actual, {}):
-            if vecino not in expandidos:
+            if vecino not in expandidos and vecino not in en_frontera:
                 contador += 1
+                en_frontera.add(vecino)
                 heapq.heappush(frontera, (heuristica(vecino, objetivo), contador, ruta + [vecino]))
 
     return None, float("inf"), orden_visita, historial_frontera
