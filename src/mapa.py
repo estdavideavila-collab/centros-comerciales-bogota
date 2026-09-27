@@ -16,7 +16,9 @@ Uso desde main.py:
     generar_ruta(ruta_bfs, "BFS")      # ruta = lista de nombres, del inicio al objetivo
     generar_ruta(ruta_ucs, "UCS")
     generar_ruta(ruta_voraz, "Voraz")
-    generar_comparacion(ruta_bfs, ruta_ucs, ruta_voraz)
+    generar_ruta(ruta_astar, "A*")
+    # ruta_voraz y ruta_astar son opcionales; sin ellas compara solo BFS y UCS
+    generar_comparacion(ruta_bfs, ruta_ucs, ruta_voraz, ruta_astar)
 
 Ejecución directa (comprueba localidades y genera mapa base y grafo completo):
     python src/mapa.py
@@ -97,14 +99,19 @@ COLOR_ARISTA = "#4A4A4A"
 COLOR_ARISTA_FONDO = "#8C8C8C"
 COLOR_NODO = "#1B2A41"
 COLOR_NODO_FONDO = "#7A7A7A"
-COLOR_RUTA = {"BFS": "#E69F00", "UCS": "#0072B2", "Voraz": "#CC79A7"}
+# Voraz y A* comparten heurística pero no color: el vino oscuro y el rosa se
+# distinguen entre sí y de los otros dos incluso para quien no ve bien el color.
+COLOR_RUTA = {"BFS": "#E69F00", "UCS": "#0072B2", "Voraz": "#882255", "A*": "#CC79A7"}
 COLOR_INICIO = "#009E73"
 COLOR_OBJETIVO = "#D55E00"
 DESCRIPCION_ALGORITMO = {
     "BFS": "Búsqueda primero en anchura: menor número de conexiones",
     "UCS": "Búsqueda de costo uniforme: menor distancia total",
-    "Voraz": "Búsqueda voraz primero el mejor: se guía por la distancia en línea recta al destino",
+    "Voraz": "Búsqueda voraz primero el mejor: se guía solo por la distancia en línea recta al destino",
+    "A*": "Búsqueda A*: menor distancia total, combinando lo recorrido con la línea recta al objetivo",
 }
+# A* lleva asterisco, que no sirve para un nombre de archivo.
+ARCHIVO_ALGORITMO = {"BFS": "bfs", "UCS": "ucs", "Voraz": "voraz", "A*": "astar"}
 
 # Desplazamiento de la etiqueta (en puntos) y alineación. Elegidos para que cada
 # nombre caiga en un hueco entre sus aristas y no tape distancias de otras.
@@ -575,8 +582,8 @@ def generar_grafo_completo(grafo=None, localidades=None, carpeta=CARPETA_SALIDA)
 def generar_ruta(ruta, algoritmo, grafo=None, localidades=None, carpeta=CARPETA_SALIDA):
     """Dibuja una ruta resaltada sobre el grafo y la guarda como docs/ruta_<algoritmo>.
 
-    ruta: lista de nombres de nodo, del inicio al objetivo (lo que devuelve BFS, UCS o la voraz).
-    algoritmo: "BFS", "UCS" o "Voraz"; define el color, el título y el nombre del archivo.
+    ruta: lista de nombres de nodo, del inicio al objetivo (lo que devuelve cualquiera de los algoritmos).
+    algoritmo: "BFS", "UCS", "Voraz" o "A*"; define el color, el título y el nombre del archivo.
     """
     grafo = validar_grafo() if grafo is None else grafo
     localidades = cargar_localidades() if localidades is None else localidades
@@ -587,25 +594,30 @@ def generar_ruta(ruta, algoritmo, grafo=None, localidades=None, carpeta=CARPETA_
         f"Ruta {algoritmo}: {ruta[0]} → {ruta[-1]}",
         f"{DESCRIPCION_ALGORITMO[algoritmo]} · {conexiones} conexiones · {formato_km(distancia)}",
         [(ruta, COLOR_RUTA[algoritmo], 7, f"{algoritmo}: {conexiones} conexiones · {formato_km(distancia)}")],
-        f"ruta_{algoritmo.lower()}", carpeta,
+        f"ruta_{ARCHIVO_ALGORITMO[algoritmo]}", carpeta,
     )
 
 
-def generar_comparacion(ruta_bfs, ruta_ucs, ruta_voraz=None, grafo=None, localidades=None,
-                        carpeta=CARPETA_SALIDA):
+def generar_comparacion(ruta_bfs, ruta_ucs, ruta_voraz=None, ruta_astar=None, grafo=None,
+                        localidades=None, carpeta=CARPETA_SALIDA):
     """Las rutas de los algoritmos superpuestas en la misma imagen. Guarda docs/comparacion_rutas.
 
-    ruta_voraz es opcional: sin ella la imagen compara solo BFS y UCS, como antes.
+    ruta_voraz y ruta_astar son opcionales: sin ellas la imagen compara solo BFS
+    y UCS, como antes. UCS y A* suelen coincidir (las dos son óptimas), así que
+    A* se dibuja la última y más delgada para que se vea el azul de UCS debajo.
     """
     grafo = validar_grafo() if grafo is None else grafo
     localidades = cargar_localidades() if localidades is None else localidades
 
-    candidatas = [("BFS", ruta_bfs, 14), ("UCS", ruta_ucs, 4), ("Voraz", ruta_voraz, 8)]
-    rutas = [(algoritmo, ruta, ancho) for algoritmo, ruta, ancho in candidatas if ruta is not None]
+    # (nombre, ruta, ancho). Se dibujan de la más ancha a la más delgada, así los
+    # tramos que comparten varios algoritmos se ven de todos los colores.
+    candidatas = [("BFS", ruta_bfs, 16), ("Voraz", ruta_voraz, 11), ("UCS", ruta_ucs, 6),
+                  ("A*", ruta_astar, 3)]
+    rutas = [(algoritmo, ruta, ancho) for algoritmo, ruta, ancho in candidatas if ruta]
 
     extremos = {(ruta[0], ruta[-1]) for _, ruta, _ in rutas}
     if len(extremos) > 1:
-        raise ValueError("Las rutas deben tener el mismo inicio y el mismo objetivo para compararse")
+        raise ValueError("Todas las rutas deben tener el mismo inicio y el mismo objetivo para compararse")
 
     capas, resumenes = [], []
     for algoritmo, ruta, ancho in rutas:
@@ -618,7 +630,6 @@ def generar_comparacion(ruta_bfs, ruta_ucs, ruta_voraz=None, grafo=None, localid
         grafo, localidades,
         f"{' vs '.join(algoritmo for algoritmo, _, _ in rutas)}: {ruta_bfs[0]} → {ruta_bfs[-1]}",
         "   |   ".join(resumenes),
-        # De la más ancha a la más delgada: así los tramos compartidos se ven de todos los colores.
         sorted(capas, key=lambda capa: -capa[2]),
         "comparacion_rutas", carpeta,
     )
