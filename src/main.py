@@ -69,7 +69,7 @@ if objetivo not in grafo:
     print("\nEl centro de destino no existe en el grafo.")
     sys.exit()
 
-# ------------------------------------------------ BFS (no informada)
+# ------------------------------------------------ BFS: no informada, sin heurística (cola FIFO)
 ruta_bfs, orden_bfs, historial_cola = busqueda_anchura(grafo, inicio, objetivo)
 
 if ruta_bfs is None:
@@ -83,7 +83,7 @@ mostrar_algoritmo(
     "Evolución de la cola FIFO", 6,
 )
 
-# ------------------------------------------------ UCS (no informada)
+# ------------------------------------------------ UCS: no informada, sin heurística (f = g)
 ruta_ucs, costo_ucs, orden_ucs, historial_frontera = busqueda_costo_uniforme(grafo, inicio, objetivo)
 mostrar_algoritmo(
     grafo, "BÚSQUEDA DE COSTO UNIFORME (UCS)", "minimiza la DISTANCIA TOTAL",
@@ -91,7 +91,7 @@ mostrar_algoritmo(
     "Evolución de la cola de prioridad (costo acumulado g, nodo), de menor a mayor", 5,
 )
 
-# ------------------------------------------------ Voraz (informada, f = h)
+# ------------------------------------------------ Voraz: informada, f = h (h = línea recta al destino)
 ruta_voraz, costo_voraz, orden_voraz, historial_voraz = busqueda_voraz(grafo, inicio, objetivo)
 mostrar_algoritmo(
     grafo, "BÚSQUEDA VORAZ PRIMERO EL MEJOR", "se guía SOLO por la distancia en línea recta (f = h)",
@@ -99,7 +99,7 @@ mostrar_algoritmo(
     "Evolución de la cola de prioridad (distancia estimada que FALTA h, nodo), de menor a mayor", 5,
 )
 
-# ------------------------------------------------ A* (informada, f = g + h)
+# ------------------------------------------------ A*: informada, f = g + h (h = línea recta al destino)
 ruta_astar, costo_astar, orden_astar, historial_astar = busqueda_a_estrella(grafo, inicio, objetivo)
 mostrar_algoritmo(
     grafo, "BÚSQUEDA A* (A ESTRELLA)",

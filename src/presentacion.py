@@ -1,15 +1,9 @@
-"""Programa para la exposición: BFS, UCS, voraz y A* entre dos centros, en consola y en el mapa.
+"""Programa de la exposición, el que se empaqueta como ejecutable: los cuatro algoritmos en consola y en el mapa.
 
-Es el que se empaqueta como ejecutable (ver crear_ejecutable.py). Corre los mismos
-algoritmos que main.py (src/bfs.py, src/ucs.py, src/voraz.py y src/astar.py) sobre el
-mismo grafo, pero:
-  - los centros se eligen por número o por nombre, sin importar tildes ni mayúsculas;
-  - abre el mapa interactivo con las cuatro rutas dibujadas, y funciona sin internet;
-  - se pueden probar varias rutas sin volver a abrir el programa;
-  - no genera las imágenes de docs/, así el ejecutable no necesita GeoPandas ni Matplotlib.
+A diferencia de main.py, elige los centros por número o por nombre, abre el mapa interactivo
+(sin internet) y no genera imágenes, así el ejecutable no necesita GeoPandas ni Matplotlib.
 
-Uso sin empaquetar:
-    python src/presentacion.py
+Uso sin empaquetar: python src/presentacion.py
 """
 
 import json

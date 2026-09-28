@@ -1,20 +1,9 @@
-"""Conexiones entre centros comerciales — aristas del grafo.
+"""Conexiones entre centros comerciales: las aristas del grafo.
 
-Archivo COMPARTIDO: cualquier cambio aquí se avisa al grupo antes de hacerlo,
-porque BFS y UCS deben correr sobre exactamente el mismo grafo.
+Archivo compartido: avisar al grupo antes de cambiarlo. El peso es la distancia por vía
+en km, calculada con OSRM el 2026-09-12 (promedio de ida y vuelta).
 
-Grafo no dirigido y ponderado. El peso de cada arista es la distancia por vía,
-en kilómetros, calculada con OSRM (rutas en carro sobre OpenStreetMap) el
-2026-09-12: promedio de ida y vuelta, redondeado a 0.1 km. Para corregir una
-distancia basta con cambiar el número en ARISTAS; el resto del proyecto la toma
-de aquí.
-
-Uso desde src/:
-    from data.conexiones import conexiones        # lista de (origen, destino, km)
-    from data.conexiones import construir_grafo, construir_adyacencia
-
-Validación de los datos:
-    python data/conexiones.py
+Validación de los datos: python data/conexiones.py
 """
 
 import networkx as nx
@@ -100,41 +89,29 @@ ARISTAS = [
     ("Ciudad Tunal", "Centro Mayor", 3.7),
 ]
 
-# La misma lista con el nombre que usa el grupo: from data.conexiones import conexiones
+# Alias con el nombre que usa el grupo.
 conexiones = ARISTAS
 
 
 def construir_grafo():
-    """Devuelve el grafo como nx.Graph.
-
-    Cada nodo trae los atributos lat, lon, localidad y direccion; cada arista,
-    el atributo peso (km). Los vecinos de cada nodo salen en orden alfabético,
-    así el desempate de BFS y UCS es el mismo en cualquier computador.
-    """
+    """Grafo de NetworkX: lat, lon, localidad y direccion en los nodos; peso (km) en las aristas."""
     grafo = nx.Graph()
     for nombre, (lat, lon, localidad, direccion) in NODOS.items():
         grafo.add_node(nombre, lat=lat, lon=lon, localidad=localidad, direccion=direccion)
-    # Insertar las aristas ordenadas por (menor, mayor) deja los vecinos de cada nodo en orden alfabético.
+    # Ordenadas así, los vecinos quedan en orden alfabético y los algoritmos desempatan igual en cualquier PC.
     for origen, destino, km in sorted((min(a, b), max(a, b), km) for a, b, km in ARISTAS):
         grafo.add_edge(origen, destino, peso=km)
     return grafo
 
 
 def construir_adyacencia():
-    """Devuelve el grafo como diccionario simple {nodo: {vecino: km}}.
-
-    Pensado para BFS y UCS escritos a mano, sin depender de NetworkX.
-    Mismo contenido y mismo orden de vecinos que construir_grafo().
-    """
+    """El grafo como diccionario {nodo: {vecino: km}}, con el mismo orden de vecinos que construir_grafo()."""
     grafo = construir_grafo()
     return {nodo: {vecino: grafo[nodo][vecino]["peso"] for vecino in grafo[nodo]} for nodo in grafo}
 
 
 def validar_grafo():
-    """Revisa que los datos estén bien transcritos y devuelve el grafo.
-
-    Lanza ValueError con la lista de problemas si algo no cuadra.
-    """
+    """Revisa que los datos estén bien transcritos y devuelve el grafo; si algo falla, lanza ValueError."""
     errores = []
 
     # Un nombre mal escrito crearía un nodo fantasma sin coordenadas.

@@ -1,27 +1,12 @@
-"""Mapa estático del grafo de centros comerciales sobre las localidades de Bogotá.
+"""Mapa estático del grafo sobre las localidades de Bogotá: imágenes PNG y SVG en docs/.
 
-Genera imágenes PNG y SVG en docs/. El orden de capas (zorder), de abajo hacia
-arriba, es fijo: el mapa de localidades SIEMPRE queda debajo del grafo.
-
-    0  relleno de las localidades
-    1  bordes de las localidades
-    2  nombres de las localidades
-    3  aristas del grafo
-    4  distancias sobre las aristas
-    5  nodos (centros comerciales)
-    6  nombres de los centros comerciales
+Capas (zorder), de abajo hacia arriba: relleno, bordes y nombres de las localidades;
+aristas, distancias, nodos y nombres de los nodos. El mapa siempre queda debajo del grafo.
 
 Uso desde main.py:
-    from mapa import generar_grafo_completo, generar_ruta, generar_comparacion
-    generar_ruta(ruta_bfs, "BFS")      # ruta = lista de nombres, del inicio al objetivo
-    generar_ruta(ruta_ucs, "UCS")
-    generar_ruta(ruta_voraz, "Voraz")
-    generar_ruta(ruta_astar, "A*")
-    # ruta_voraz y ruta_astar son opcionales; sin ellas compara solo BFS y UCS
-    generar_comparacion(ruta_bfs, ruta_ucs, ruta_voraz, ruta_astar)
-
-Ejecución directa (comprueba localidades y genera mapa base y grafo completo):
-    python src/mapa.py
+    generar_ruta(ruta, "BFS")    # o "UCS", "Voraz", "A*"
+    generar_comparacion(ruta_bfs, ruta_ucs, ruta_voraz, ruta_astar)   # voraz y A* son opcionales
+Ejecución directa (comprueba localidades y genera mapa base y grafo completo): python src/mapa.py
 """
 
 import itertools
@@ -77,16 +62,14 @@ NOMBRES_LOCALIDADES = {
     "20": "Sumapaz",
 }
 
-# Encuadre (lon_min, lat_min, lon_max, lat_max): zona urbana. Sumapaz se descarta,
-# porque si se deja los 40 nodos quedan comprimidos en una esquina.
+# Encuadre (lon_min, lat_min, lon_max, lat_max) de la zona urbana; sin Sumapaz, que comprimiría los nodos.
 ENCUADRE = (-74.215, 4.545, -74.005, 4.830)
 ANCHO_FIGURA = 17  # pulgadas; el alto se calcula para que el mapa llene la hoja
 MARGENES = dict(left=0.01, right=0.99, bottom=0.025, top=0.955)
 # Cuántos grados del mapa mide un punto tipográfico (para calcular dónde caben los textos).
 PUNTOS_A_GRADOS = (ENCUADRE[2] - ENCUADRE[0]) / (ANCHO_FIGURA * (MARGENES["right"] - MARGENES["left"]) * 72)
 
-# En la Zona Rosa, El Retiro, Andino y Atlantis Plaza están a 300-600 m entre sí
-# y en el mapa general se tapan. Se dibujan también en un recuadro ampliado.
+# El Retiro, Andino y Atlantis Plaza (Zona Rosa) se tapan en el mapa general; se repiten ampliados.
 ZONA_AMPLIADA = (-74.0600, 4.6625, -74.0495, 4.6695)
 UBICACION_AMPLIACION = (0.66, 0.005, 0.33, 0.16)  # fracción de los ejes: abajo a la derecha
 
@@ -99,8 +82,7 @@ COLOR_ARISTA = "#4A4A4A"
 COLOR_ARISTA_FONDO = "#8C8C8C"
 COLOR_NODO = "#1B2A41"
 COLOR_NODO_FONDO = "#7A7A7A"
-# Voraz y A* comparten heurística pero no color: el vino oscuro y el rosa se
-# distinguen entre sí y de los otros dos incluso para quien no ve bien el color.
+# Colores que se distinguen entre sí incluso con daltonismo.
 COLOR_RUTA = {"BFS": "#E69F00", "UCS": "#0072B2", "Voraz": "#882255", "A*": "#CC79A7"}
 COLOR_INICIO = "#009E73"
 COLOR_OBJETIVO = "#D55E00"
@@ -113,8 +95,7 @@ DESCRIPCION_ALGORITMO = {
 # A* lleva asterisco, que no sirve para un nombre de archivo.
 ARCHIVO_ALGORITMO = {"BFS": "bfs", "UCS": "ucs", "Voraz": "voraz", "A*": "astar"}
 
-# Desplazamiento de la etiqueta (en puntos) y alineación. Elegidos para que cada
-# nombre caiga en un hueco entre sus aristas y no tape distancias de otras.
+# Desplazamiento (en puntos) y alineación del nombre de cada nodo, elegidos para no tapar aristas ni distancias.
 POSICION_ETIQUETA_DEFECTO = ((0, 9), "center", "bottom")
 POSICION_ETIQUETA = {
     "Santafé": ((-8, 5), "right", "bottom"),
@@ -151,8 +132,7 @@ POSICION_ETIQUETA = {
     "Ciudad Tunal": ((9, -4), "left", "top"),
 }
 
-# Aristas que se dibujan curvas porque su recta pasaría encima de otro nodo y
-# parecería que lo atraviesa. Valor: curvatura (arc3 de Matplotlib) en el sentido de la tupla.
+# Aristas curvas, para que su recta no parezca atravesar otro nodo; valor: curvatura arc3 de Matplotlib.
 ARISTAS_CURVAS = {
     # Multiplaza La Felicidad queda casi sobre la recta; la curva la esquiva por el norte.
     ("Hayuelos", "Salitre Plaza"): -0.3,
@@ -174,11 +154,7 @@ def cargar_localidades():
 
 
 def verificar_localidades(grafo, localidades):
-    """Devuelve los nodos que NO caen dentro de la localidad que dice su atributo.
-
-    Cada elemento es (nodo, localidad_esperada, localidad_encontrada).
-    Si aparece alguno, la coordenada del nodo está mal, no el código.
-    """
+    """Lista de (nodo, localidad esperada, localidad encontrada) de los nodos que caen fuera de la suya."""
     discrepancias = []
     for nodo, datos in grafo.nodes(data=True):
         punto = Point(datos["lon"], datos["lat"])
@@ -250,12 +226,7 @@ def _caja_etiqueta(nodo, punto, tamano):
 
 
 def _obstaculos(grafo, pos, con_ampliacion, tamano_nombres=9):
-    """Todo lo que un nombre de localidad no debe tapar: nodos, aristas, sus etiquetas y la ampliación.
-
-    Van como piezas sueltas en un árbol espacial (STRtree): medir la distancia a la pieza
-    más cercana da lo mismo que medirla contra la unión de todas, pero es mucho más
-    rápido, porque la unión es un solo polígono con miles de vértices.
-    """
+    """Lo que un nombre de localidad no debe tapar, en un STRtree (mucho más rápido que unir todo)."""
     geometrias = [Point(p).buffer(8 * PUNTOS_A_GRADOS) for p in pos.values()]
     geometrias += [LineString([pos[a], pos[b]]).buffer(3 * PUNTOS_A_GRADOS) for a, b in grafo.edges]
     geometrias += [_caja_etiqueta(nodo, p, tamano_nombres) for nodo, p in pos.items()]
@@ -265,12 +236,7 @@ def _obstaculos(grafo, pos, con_ampliacion, tamano_nombres=9):
 
 
 def _punto_para_nombre(visible, texto, tamano, obstaculos):
-    """Centro para el nombre de una localidad y si el nombre cabe entero en ella.
-
-    Se prueban posiciones en una rejilla: el rectángulo del nombre debe caber dentro
-    de la localidad y quedar lo más lejos posible del grafo y de los bordes. Si
-    ninguna posición queda libre, se elige la que menos tapa.
-    """
+    """(punto, cabe): la posición de una rejilla más alejada del grafo y de los bordes, y si el nombre cabe entero."""
     mayor = max(getattr(visible, "geoms", [visible]), key=lambda parte: parte.area)
     shapely.prepare(mayor)  # acelera las pruebas de contención, que se hacen miles de veces
     xmin, ymin, xmax, ymax = mayor.bounds
@@ -288,8 +254,7 @@ def _punto_para_nombre(visible, texto, tamano, obstaculos):
         (indices, _), distancias = obstaculos.query_nearest(cajas, return_distance=True, all_matches=False)
         holgura[indices] = np.minimum(holgura[indices], distancias)
         if not holgura.any():
-            # Ninguna posición queda libre: gana la que menos área tapa. Si hay alguna libre
-            # no hace falta calcularlo, porque una libre siempre le gana a una tapada.
+            # Ninguna posición queda libre: gana la que menos área tapa.
             holgura = -shapely.area(shapely.intersection(cajas, shapely.union_all(obstaculos.geometries)))
     # Caber entero en la localidad pesa más que cualquier holgura.
     caben = shapely.contains(mayor, cajas)
@@ -302,16 +267,9 @@ def _punto_para_nombre(visible, texto, tamano, obstaculos):
 # ---------------------------------------------------------------------------
 
 def _dibujar_localidades(ax, localidades):
-    """Capas 0 y 1: relleno y bordes de las localidades.
-
-    Arma las mismas colecciones de Matplotlib que localidades.plot() y
-    localidades.boundary.plot(), pero sin el redibujado de la figura entera que
-    GeoPandas hace al final de cada .plot(): eran cuatro por imagen, y los del
-    recuadro ampliado repintaban todo el mapa ya dibujado.
-    """
+    """Capas 0 y 1: relleno y bordes, sin el redibujado completo que hace cada .plot() de GeoPandas."""
     parches, colores, bordes = [], [], []
-    # Normalizadas como las deja GeoPandas antes de dibujar (orden y sentido de los
-    # anillos); si no, el suavizado de los bordes cambia en algunos píxeles.
+    # Normalizadas como las deja GeoPandas; si no, el suavizado de los bordes cambia unos píxeles.
     for relleno, borde, color in zip(localidades.geometry.normalize(), localidades.boundary.normalize(),
                                      localidades["color"]):
         for poligono in getattr(relleno, "geoms", [relleno]):
@@ -331,8 +289,7 @@ def dibujar_mapa_base(ax, localidades, obstaculos=None, con_nombres=True):
 
     marco = box(*ENCUADRE)
     for fila in localidades.itertuples():
-        # El nombre va en la parte visible de la localidad (Usme o Ciudad Bolívar
-        # tienen gran parte fuera del encuadre), en el hueco más libre del grafo.
+        # El nombre va en la parte visible de la localidad, en el hueco más libre del grafo.
         visible = fila.geometry.intersection(marco)
         if visible.is_empty:
             continue
@@ -580,11 +537,7 @@ def generar_grafo_completo(grafo=None, localidades=None, carpeta=CARPETA_SALIDA)
 
 
 def generar_ruta(ruta, algoritmo, grafo=None, localidades=None, carpeta=CARPETA_SALIDA):
-    """Dibuja una ruta resaltada sobre el grafo y la guarda como docs/ruta_<algoritmo>.
-
-    ruta: lista de nombres de nodo, del inicio al objetivo (lo que devuelve cualquiera de los algoritmos).
-    algoritmo: "BFS", "UCS", "Voraz" o "A*"; define el color, el título y el nombre del archivo.
-    """
+    """Dibuja una ruta resaltada y la guarda como docs/ruta_<algoritmo> ("BFS", "UCS", "Voraz" o "A*")."""
     grafo = validar_grafo() if grafo is None else grafo
     localidades = cargar_localidades() if localidades is None else localidades
     distancia = validar_ruta(grafo, ruta)
@@ -600,17 +553,11 @@ def generar_ruta(ruta, algoritmo, grafo=None, localidades=None, carpeta=CARPETA_
 
 def generar_comparacion(ruta_bfs, ruta_ucs, ruta_voraz=None, ruta_astar=None, grafo=None,
                         localidades=None, carpeta=CARPETA_SALIDA):
-    """Las rutas de los algoritmos superpuestas en la misma imagen. Guarda docs/comparacion_rutas.
-
-    ruta_voraz y ruta_astar son opcionales: sin ellas la imagen compara solo BFS
-    y UCS, como antes. UCS y A* suelen coincidir (las dos son óptimas), así que
-    A* se dibuja la última y más delgada para que se vea el azul de UCS debajo.
-    """
+    """Las rutas superpuestas en docs/comparacion_rutas; ruta_voraz y ruta_astar son opcionales."""
     grafo = validar_grafo() if grafo is None else grafo
     localidades = cargar_localidades() if localidades is None else localidades
 
-    # (nombre, ruta, ancho). Se dibujan de la más ancha a la más delgada, así los
-    # tramos que comparten varios algoritmos se ven de todos los colores.
+    # De la más ancha a la más delgada, para que los tramos compartidos se vean de todos los colores.
     candidatas = [("BFS", ruta_bfs, 16), ("Voraz", ruta_voraz, 11), ("UCS", ruta_ucs, 6),
                   ("A*", ruta_astar, 3)]
     rutas = [(algoritmo, ruta, ancho) for algoritmo, ruta, ancho in candidatas if ruta]

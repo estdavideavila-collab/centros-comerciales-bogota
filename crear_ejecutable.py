@@ -1,14 +1,7 @@
-"""Crea el ejecutable para la exposición: dist/CentrosComercialesBogota.exe (Windows).
+"""Crea el ejecutable de la exposición: dist/CentrosComercialesBogota.exe (Windows).
 
-El ejecutable corre src/presentacion.py (BFS, UCS y A* en consola) y lleva adentro el mapa
-interactivo, que funciona sin internet. En el otro computador no hace falta instalar
-Python ni nada más.
-
-Una sola vez, con el entorno del proyecto activo:
-    pip install pyinstaller
-
-Luego, cada vez que cambie algo del proyecto:
-    python crear_ejecutable.py
+Corre src/presentacion.py y lleva adentro el mapa interactivo; no necesita Python ni internet.
+Una vez: pip install pyinstaller. Luego, tras cada cambio: python crear_ejecutable.py
 """
 
 import os
@@ -25,9 +18,7 @@ from mapa_interactivo import generar_mapa_interactivo  # noqa: E402
 NOMBRE = "CentrosComercialesBogota"
 CARPETA_TRABAJO = RAIZ / "build"
 
-# El programa solo necesita NetworkX. Estas librerías están en el entorno para las imágenes
-# y el mapa, y NetworkX las menciona como opcionales: si no se excluyen, PyInstaller las mete
-# todas y el ejecutable pasa de unos MB a cientos.
+# Solo se usa NetworkX; sin excluir estas librerías opcionales, el .exe pesaría cientos de MB.
 EXCLUIDAS = [
     "matplotlib", "numpy", "scipy", "pandas", "geopandas", "shapely", "pyogrio", "pyproj",
     "folium", "branca", "jinja2", "PIL", "tkinter",

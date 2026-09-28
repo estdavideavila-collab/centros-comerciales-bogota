@@ -1,25 +1,13 @@
-"""Búsqueda A* (A estrella) sobre el grafo de centros comerciales.
+"""Búsqueda A*: la ruta de menor distancia total, guiada por una heurística.
 
-UCS ordena su cola de prioridad por g(n): los km ya recorridos. A* la ordena
-por f(n) = g(n) + h(n), donde h(n) es una estimación de lo que falta desde n
-hasta el objetivo. Así deja de expandir en todas las direcciones por igual y
-se orienta hacia el destino.
-
-La heurística que se usa aquí es la DISTANCIA EN LÍNEA RECTA (fórmula de
-haversine sobre las coordenadas lat/lon de data/centros.py). Es admisible
-porque los pesos del grafo son distancias POR VÍA, y una vía nunca puede ser
-más corta que la línea recta entre dos puntos: h(n) jamás sobreestima. Y es
-consistente porque cumple la desigualdad triangular. Con una heurística
-admisible y consistente, A* devuelve la MISMA ruta óptima que UCS, pero
-expandiendo menos nodos.
-
-Casos extremos:
-  - Si h(n) = 0 para todo n, A* se comporta exactamente como UCS.
-  - Si h(n) sobreestima, A* es más rápido pero puede devolver una ruta peor.
+Heurística: h(n) = distancia en línea recta (Haversine) de n al destino. Nunca supera la
+distancia por vía (es admisible), así que A* da la ruta óptima expandiendo menos nodos que UCS.
+f(n) = g(n) + h(n): lo recorrido más lo que se estima que falta.
 
 Uso:
     from astar import busqueda_a_estrella
     ruta, costo, orden, historial = busqueda_a_estrella(grafo, "Bima", "Centro Mayor")
+Comprobar la heurística: python src/astar.py
 """
 
 import heapq
@@ -36,13 +24,12 @@ except ModuleNotFoundError:  # al ejecutarlo directamente desde src/
 RADIO_TIERRA_KM = 6371.0
 
 
+# ==============================================================================
+#  HEURÍSTICA   h(n) = distancia en línea recta (Haversine) de n al destino, en km
+#  Es admisible: ninguna ruta por calles es más corta que la línea recta.
+# ==============================================================================
 def distancia_linea_recta(nodo_a, nodo_b):
-    """Distancia en línea recta (km) entre dos centros, por la fórmula de haversine.
-
-    Haversine da la distancia sobre la superficie de la esfera (el "arco" que
-    une los dos puntos), que es lo más corto que se puede ir entre ellos.
-    Cualquier ruta por calles mide igual o más, nunca menos.
-    """
+    """Distancia en línea recta en km (Haversine) entre dos centros."""
     lat_a, lon_a = NODOS[nodo_a][0], NODOS[nodo_a][1]
     lat_b, lon_b = NODOS[nodo_b][0], NODOS[nodo_b][1]
 
@@ -54,42 +41,32 @@ def distancia_linea_recta(nodo_a, nodo_b):
     return 2 * RADIO_TIERRA_KM * asin(sqrt(a))
 
 
+# ==============================================================================
+#  BÚSQUEDA A*   f(n) = g(n) + h(n)
+# ==============================================================================
 def busqueda_a_estrella(grafo, inicio, objetivo, heuristica=distancia_linea_recta):
     """Ruta de menor distancia total, guiada por la heurística.
 
-    grafo: diccionario {nodo: {vecino: km}} (lo devuelve construir_adyacencia()).
-    heuristica: función h(nodo, objetivo) -> km estimados que faltan.
-
-    Devuelve (ruta, costo, orden_visita, historial_frontera):
-      ruta:               lista de nodos del inicio al objetivo (None si no hay camino)
-      costo:              distancia REAL de la ruta en km, o sea g, no f
-                          (float('inf') si no hay camino)
-      orden_visita:       nodos en el orden en que fueron expandidos
-      historial_frontera: estado de la cola antes de cada expansión, como lista
-                          de (f, g, h, nodo) ordenada por f de menor a mayor
+    Devuelve (ruta, costo, orden_visita, historial_frontera) como UCS; costo es g, la
+    distancia real, y el historial guarda (f, g, h, nodo) ordenado por f.
     """
-    # Cola de prioridad. Cada entrada es (f, contador, g, ruta).
-    # heapq saca la tupla más pequeña, así que el primer campo (f) manda.
-    # A diferencia de UCS, aquí hay que guardar g aparte: f sirve para ordenar,
-    # pero el costo real de la ruta es g.
+    # Entradas (f, contador, g, ruta): f ordena la cola y g guarda el costo real.
     contador = 0
     h_inicio = heuristica(inicio, objetivo)
     frontera = [(h_inicio, contador, 0.0, [inicio])]
 
-    # Igual que en UCS: un nodo se cierra cuando SALE de la cola, no cuando entra.
+    # Como en UCS, un nodo se cierra al salir de la cola, no al entrar.
     expandidos = set()
 
     orden_visita = []
     historial_frontera = []
 
     while frontera:
-        # Foto de la frontera antes de expandir, con las tres cifras a la vista.
         historial_frontera.append([
             (round(f, 1), round(g, 1), round(f - g, 1), ruta[-1])
             for f, _, g, ruta in sorted(frontera)
         ])
 
-        # Sacar el camino con menor f = g + h (el más prometedor).
         f, _, g, ruta = heapq.heappop(frontera)
         nodo_actual = ruta[-1]
 
@@ -99,16 +76,14 @@ def busqueda_a_estrella(grafo, inicio, objetivo, heuristica=distancia_linea_rect
         expandidos.add(nodo_actual)
         orden_visita.append(nodo_actual)
 
-        # Prueba de objetivo al expandir. Con h admisible, en este punto ningún
-        # camino pendiente puede llegar al objetivo con menos de g.
+        # Prueba de objetivo al expandir: con h admisible, la ruta es la óptima.
         if nodo_actual == objetivo:
             return ruta, round(g, 1), orden_visita, historial_frontera
 
-        # Generar sucesores: g crece con los km del tramo; h se recalcula desde
-        # el vecino hasta el objetivo.
         for vecino, km in grafo.get(nodo_actual, {}).items():
             if vecino not in expandidos:
                 contador += 1
+                # f(n) = g(n) + h(n): aquí entra la HEURÍSTICA, sumada a lo recorrido.
                 nuevo_g = g + km
                 nuevo_f = nuevo_g + heuristica(vecino, objetivo)
                 heapq.heappush(frontera, (nuevo_f, contador, nuevo_g, ruta + [vecino]))
@@ -116,13 +91,11 @@ def busqueda_a_estrella(grafo, inicio, objetivo, heuristica=distancia_linea_rect
     return None, float("inf"), orden_visita, historial_frontera
 
 
+# ==============================================================================
+#  COMPROBACIÓN DE LA HEURÍSTICA   (python src/astar.py)
+# ==============================================================================
 def es_admisible(grafo, heuristica=distancia_linea_recta):
-    """Nodos donde la heurística sobreestima el costo real, para todo par (n, objetivo).
-
-    Devuelve la lista de (nodo, objetivo, h, costo_real) que violan h <= costo real.
-    Si la lista sale vacía, la heurística es admisible en este grafo y A* es óptimo.
-    Requiere el costo real mínimo, que se obtiene con UCS.
-    """
+    """Lista de (nodo, objetivo, h, costo real) donde h supera el costo real; vacía si es admisible."""
     from ucs import busqueda_costo_uniforme
 
     violaciones = []
@@ -138,12 +111,7 @@ def es_admisible(grafo, heuristica=distancia_linea_recta):
 
 
 def es_consistente(grafo, heuristica=distancia_linea_recta):
-    """Aristas donde se rompe la desigualdad triangular h(n) <= coste(n,m) + h(m).
-
-    Devuelve la lista de (n, m, objetivo, h_n, coste + h_m) que la violan.
-    Si sale vacía, la heurística es consistente: A* nunca necesita reabrir un
-    nodo ya cerrado.
-    """
+    """Lista de (n, m, objetivo, h(n), costo + h(m)) donde h(n) > costo(n, m) + h(m); vacía si es consistente."""
     violaciones = []
     for objetivo in grafo:
         for nodo in grafo:

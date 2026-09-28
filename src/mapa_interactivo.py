@@ -1,36 +1,13 @@
-"""Mapa interactivo (HTML) del grafo de centros comerciales, hecho con Folium.
+"""Mapa interactivo (HTML con Folium) del grafo, con el panel "Buscar ruta".
 
-Complementa a mapa.py: la imagen estática con las localidades de fondo es la que
-va en las diapositivas; este HTML permite hacer zoom, prender y apagar capas y ver
-los datos de cada centro comercial con un clic. No lleva mapa de calles de fondo:
-las coordenadas son aproximadas y sobre las calles reales los puntos se ven corridos.
+El panel corre en el navegador los cuatro algoritmos, copiados a JavaScript de src/ con el
+mismo orden de vecinos, y muestra sus rutas y la tabla comparativa. Si dos caminos empatan
+en km, Python y JavaScript pueden desempatar distinto (seno y coseno varían en el último bit).
+Funciona sin internet, porque Leaflet y jQuery van dentro del HTML. presentacion.py reescribe
+los campos "inicio" y "objetivo" de DATOS, así que su formato no debe cambiar.
 
-Trae además el panel "Buscar ruta": se elige el punto A (inicio) y el punto B
-(destino), en las listas o con los botones del recuadro de cada centro, y el
-navegador corre los cuatro algoritmos, dibuja las cuatro rutas y muestra de cada uno
-la ruta, las conexiones, los km y los nodos expandidos, y al final la tabla comparativa.
-El detalle paso a paso (tramos, orden de visita, evolución de la cola) queda en la
-consola de main.py y del ejecutable. Los algoritmos están en JavaScript copiados paso a paso
-de src/bfs.py, src/ucs.py, src/voraz.py y src/astar.py, sobre el mismo grafo y con el
-mismo orden de vecinos, así que dan las mismas rutas.
-
-Nota sobre la heurística: usa seno y coseno, y esas funciones pueden diferir en el
-último bit entre Python y JavaScript. Los kilómetros siempre coinciden; si hay dos
-caminos igual de buenos, cada lenguaje podría desempatar por uno distinto.
-
-Funciona sin internet: Leaflet y jQuery van dentro del HTML (copiados en src/web/),
-en vez de enlazarse desde un CDN como hace Folium. El ejecutable de la exposición
-(src/presentacion.py) abre este HTML cambiando los campos "inicio" y "objetivo" de
-DATOS, así que el formato de esos dos campos no debe cambiar.
-
-Uso desde main.py:
-    from mapa_interactivo import generar_mapa_interactivo
-    generar_mapa_interactivo(rutas={"BFS": ruta_bfs, "UCS": ruta_ucs,
-                                    "Voraz": ruta_voraz, "A*": ruta_astar})
-El HTML abre con el inicio y el destino de esas rutas ya elegidos.
-
-Ejecución directa (sin inicio ni destino elegidos):
-    python src/mapa_interactivo.py      -> docs/mapa_interactivo.html
+Uso: generar_mapa_interactivo(rutas={"BFS": ..., "UCS": ..., "Voraz": ..., "A*": ...})
+Sin rutas (python src/mapa_interactivo.py) abre sin inicio ni destino elegidos.
 """
 
 import html
@@ -153,6 +130,7 @@ _PLANTILLA_PANEL = r"""
         return Number(x.toFixed(1));
     }
 
+    // BFS: sin heurística; cola FIFO.
     function busquedaAnchura(grafo, inicio, objetivo) {
         var cola = [[inicio]];
         var visitados = new Set([inicio]);
@@ -181,9 +159,9 @@ _PLANTILLA_PANEL = r"""
         return {ruta: null, ordenVisita: ordenVisita, historial: historialCola};
     }
 
+    // UCS: sin heurística; f(n) = g(n).
     function busquedaCostoUniforme(grafo, inicio, objetivo) {
-        // Cola de prioridad con entradas [costo acumulado, contador, ruta]: sale la de
-        // menor costo y, si hay empate, la que llegó primero (igual que heapq en ucs.py).
+        // Entradas [costo, contador, ruta]: a igual costo sale la que llegó primero, como heapq en ucs.py.
         var contador = 0;
         var frontera = [[0, contador, [inicio]]];
         var expandidos = new Set();
@@ -222,9 +200,10 @@ _PLANTILLA_PANEL = r"""
 
     var RADIO_TIERRA_KM = 6371;
 
-    // Heurística compartida por la voraz y A*: distancia en línea recta (Haversine)
-    // entre dos centros, en km. Ninguna ruta por calles puede ser más corta.
-    // Igual que distancia_recta() en voraz.py y distancia_linea_recta() en astar.py.
+    // ==========================================================================
+    //  HEURÍSTICA   h(n) de la voraz y A*: distancia en línea recta en km (Haversine),
+    //  la misma de voraz.py y astar.py.
+    // ==========================================================================
     function distanciaLineaRecta(a, b) {
         var ca = DATOS.coords[a], cb = DATOS.coords[b], rad = Math.PI / 180;
         var latA = ca[0] * rad, latB = cb[0] * rad;
@@ -234,9 +213,8 @@ _PLANTILLA_PANEL = r"""
         return 2 * RADIO_TIERRA_KM * Math.asin(Math.sqrt(h));
     }
 
+    // Voraz: f(n) = h(n), solo lo que falta; por eso no es óptima.
     function busquedaVoraz(grafo, inicio, objetivo) {
-        // Igual que UCS, pero la cola se ordena por la heurística h(n) -lo que FALTA-
-        // en vez del costo acumulado g(n) -lo ya recorrido-. Por eso no es óptima.
         var contador = 0;
         var frontera = [[distanciaLineaRecta(inicio, objetivo), contador, [inicio]]];
         // Cada nodo entra una sola vez a la frontera: su h no depende del camino.
@@ -272,9 +250,9 @@ _PLANTILLA_PANEL = r"""
         return {ruta: null, costo: Infinity, ordenVisita: ordenVisita, historial: historialFrontera};
     }
 
+    // A*: f(n) = g(n) + h(n), lo recorrido más lo que falta.
     function busquedaAEstrella(grafo, inicio, objetivo) {
-        // Igual que UCS, pero la cola se ordena por f = g + h en vez de por g solo.
-        // Entradas [f, contador, g, ruta]: g es el costo real y h lo que falta estimado.
+        // Entradas [f, contador, g, ruta]: f ordena la cola y g guarda el costo real.
         var contador = 0;
         var frontera = [[distanciaLineaRecta(inicio, objetivo), contador, 0, [inicio]]];
         var expandidos = new Set();
@@ -339,9 +317,7 @@ _PLANTILLA_PANEL = r"""
         mapa.zoomControl.setPosition("bottomright");
     }
 
-    // Ancho de la línea de cada ruta: la más ancha se dibuja primero y queda debajo,
-    // así los tramos que comparten varios algoritmos se ven de todos los colores.
-    // UCS y A* suelen coincidir, por eso A* va la última y la más delgada.
+    // De la más ancha a la más delgada, para que los tramos compartidos se vean de todos los colores.
     var ANCHOS = [["BFS", 12, 0.85], ["Voraz", 8, 0.9], ["UCS", 5, 1], ["A*", 2.5, 1]];
     var capas = {};
     ANCHOS.forEach(function (a) {
@@ -486,8 +462,7 @@ _PLANTILLA_PANEL = r"""
         buscar();
     });
 
-    // Botones "Desde aquí" / "Hasta aquí" del recuadro de cada centro. Se escucha en la fase
-    // de captura porque Leaflet no deja que los clics dentro de un popup lleguen al documento.
+    // Botones "Desde aquí" y "Hasta aquí": se escucha en captura porque Leaflet no deja salir los clics del popup.
     document.addEventListener("click", function (e) {
         var boton = e.target.closest ? e.target.closest("[data-rol]") : null;
         if (!boton) {
@@ -536,13 +511,7 @@ class _PanelRutas(folium.MacroElement):
 
 
 def generar_mapa_interactivo(grafo=None, rutas=None, carpeta=CARPETA_SALIDA):
-    """Guarda docs/mapa_interactivo.html y devuelve su ruta.
-
-    rutas: diccionario opcional {"BFS": [...], "UCS": [...], "Voraz": [...], "A*": [...]}
-    con listas de nombres,
-    del inicio al objetivo. El HTML abre con ese inicio y ese destino ya elegidos en
-    el panel "Buscar ruta"; desde el navegador se puede elegir cualquier otro par.
-    """
+    """Guarda docs/mapa_interactivo.html y devuelve su ruta; con rutas, el panel abre con su inicio y destino."""
     grafo = validar_grafo() if grafo is None else grafo
     inicio, objetivo = _extremos(grafo, rutas or {})
     latitudes = [d["lat"] for _, d in grafo.nodes(data=True)]
@@ -551,16 +520,13 @@ def generar_mapa_interactivo(grafo=None, rutas=None, carpeta=CARPETA_SALIDA):
     # Sin mapa de calles (tiles=None): el fondo son solo las localidades, sobre blanco.
     mapa = folium.Map(location=[sum(latitudes) / len(latitudes), sum(longitudes) / len(longitudes)],
                       zoom_start=12, tiles=None)
-    # Leaflet y jQuery van dentro del HTML para que funcione sin internet (Folium las enlazaría
-    # desde un CDN, junto con Bootstrap y Font Awesome, que este mapa no usa). El {% raw %}
-    # evita que Jinja, con el que Folium arma el HTML, interprete llaves del código de las librerías.
+    # Leaflet y jQuery van dentro del HTML para funcionar sin internet; {% raw %} evita que Jinja lea sus llaves.
     mapa.default_js, mapa.default_css = [], []
     cabecera = mapa.get_root().header
     for etiqueta, archivo in (("style", "leaflet.css"), ("script", "leaflet.js"), ("script", "jquery.min.js")):
         codigo = (CARPETA_WEB / archivo).read_text(encoding="utf-8")
         cabecera.add_child(folium.Element(f"{{% raw %}}<{etiqueta}>{codigo}</{etiqueta}>{{% endraw %}}"))
-    # Va después de leaflet.css, que pinta el fondo de gris. El letrero de las localidades se
-    # distingue del nombre de los centros comerciales: mayúsculas, más grande y con borde.
+    # Va después de leaflet.css, que pinta el fondo de gris; el letrero de localidad se distingue del de los centros.
     cabecera.add_child(folium.Element(
         "<style>.leaflet-container{background:#ffffff}"
         ".leaflet-tooltip.letrero-localidad{font:700 13px/1.2 system-ui,-apple-system,'Segoe UI',Roboto,"
@@ -601,7 +567,7 @@ def generar_mapa_interactivo(grafo=None, rutas=None, carpeta=CARPETA_SALIDA):
     control.add_to(mapa)
     mapa.fit_bounds([[min(latitudes), min(longitudes)], [max(latitudes), max(longitudes)]])
 
-    # Mismo orden de vecinos que construir_adyacencia(): de él depende el desempate de los tres algoritmos.
+    # Mismo orden de vecinos que construir_adyacencia(): de él dependen los desempates de los algoritmos.
     datos_panel = {
         "grafo": {nodo: {vecino: grafo[nodo][vecino]["peso"] for vecino in grafo[nodo]} for nodo in grafo},
         "coords": {nodo: [d["lat"], d["lon"]] for nodo, d in grafo.nodes(data=True)},

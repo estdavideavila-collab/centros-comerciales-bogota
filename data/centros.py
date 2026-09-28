@@ -1,16 +1,10 @@
-"""Centros comerciales de Bogotá D.C. — nodos del grafo.
+"""Centros comerciales de Bogotá D.C.: los nodos del grafo.
 
-Archivo COMPARTIDO: cualquier cambio aquí se avisa al grupo antes de hacerlo,
-porque BFS y UCS deben correr sobre exactamente el mismo grafo.
-
-Las coordenadas son aproximadas (derivadas de la dirección, con precisión de unas
-pocas cuadras). Sirven para ubicar cada nodo en su localidad, no son GPS exactas.
-Las de Nuestro Bogotá, Multiplaza La Felicidad, Mallplaza NQS y Gran San Victorino
-se tomaron de OpenStreetMap porque las anteriores caían en la localidad vecina.
+Archivo compartido: avisar al grupo antes de cambiarlo. Las coordenadas son aproximadas
+(unas cuadras de precisión) y sirven para ubicar cada centro en su localidad.
 """
 
-# nombre: (latitud, longitud, localidad, direccion)
-# Ordenados de norte a sur.
+# nombre: (latitud, longitud, localidad, dirección), de norte a sur.
 NODOS = {
     "Bima": (4.792, -74.043, "Suba", "Autopista Norte # 232-35"),
     "Santafé": (4.7619, -74.0464, "Suba", "Autopista Norte con Calle 183"),
