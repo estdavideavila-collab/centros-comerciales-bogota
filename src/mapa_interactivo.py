@@ -7,9 +7,10 @@ las coordenadas son aproximadas y sobre las calles reales los puntos se ven corr
 
 Trae además el panel "Buscar ruta": se elige el punto A (inicio) y el punto B
 (destino), en las listas o con los botones del recuadro de cada centro, y el
-navegador corre los cuatro algoritmos, dibuja las cuatro rutas y muestra lo mismo
-que main.py: ruta, conexiones, km, costo tramo a tramo, orden de visita, evolución
-de la cola y la comparación. Los algoritmos están en JavaScript copiados paso a paso
+navegador corre los cuatro algoritmos, dibuja las cuatro rutas y muestra de cada uno
+la ruta, las conexiones, los km y los nodos expandidos, y al final la tabla comparativa.
+El detalle paso a paso (tramos, orden de visita, evolución de la cola) queda en la
+consola de main.py y del ejecutable. Los algoritmos están en JavaScript copiados paso a paso
 de src/bfs.py, src/ucs.py, src/voraz.py y src/astar.py, sobre el mismo grafo y con el
 mismo orden de vecinos, así que dan las mismas rutas.
 
@@ -112,15 +113,10 @@ _PLANTILLA_PANEL = r"""
 .rutas-algo h3 small { display: block; font-weight: 400; font-size: 12px; color: #5b6472; }
 .rutas-camino { margin: 6px 0 4px; }
 .rutas-cifras { margin: 0 0 4px; }
-#rutas-panel details summary { cursor: pointer; }
-.rutas-algo details summary { font-size: 12px; color: #5b6472; margin-top: 3px; }
-.rutas-algo details p { margin: 4px 0; font-size: 12px; }
 #rutas-panel table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; margin: 4px 0; }
 #rutas-panel th, #rutas-panel td { padding: 2px 4px; border-bottom: 1px solid #eceef2; text-align: left; }
 #rutas-panel .num { text-align: right; white-space: nowrap; }
-#rutas-panel ol { margin: 4px 0; padding-left: 24px; font-size: 12px; }
 .rutas-comparacion { margin-top: 16px; padding-top: 10px; border-top: 1px solid #dfe3e8; }
-.rutas-comparacion p { margin: 6px 0 0; }
 .rutas-etiqueta { font-weight: 600; }
 </style>
 {% endmacro %}
@@ -326,17 +322,6 @@ _PLANTILLA_PANEL = r"""
         }
         return redondear(total);
     }
-
-    function desgloseRuta(grafo, ruta) {
-        var desglose = [];
-        var acumulado = 0;
-        for (var i = 1; i < ruta.length; i++) {
-            var km = grafo[ruta[i - 1]][ruta[i]];
-            acumulado += km;
-            desglose.push([ruta[i - 1], ruta[i], km, redondear(acumulado)]);
-        }
-        return desglose;
-    }
     // ---- Interfaz ----
 
     var panel = document.getElementById("rutas-panel");
@@ -416,88 +401,13 @@ _PLANTILLA_PANEL = r"""
         }
     }
 
-    function seccion(algoritmo, r, tituloCola, formatoPaso) {
-        var filas = '<tr><th>Tramo</th><th class="num">km</th><th class="num">Acumulado</th></tr>' +
-            "<tr><td>" + esc(r.ruta[0]) + '</td><td></td><td class="num">' + numero(0) + "</td></tr>";
-        desgloseRuta(grafo, r.ruta).forEach(function (t) {
-            filas += "<tr><td>" + esc(t[0]) + " → " + esc(t[1]) + '</td><td class="num">' + numero(t[2]) +
-                '</td><td class="num">' + numero(t[3]) + "</td></tr>";
-        });
-        var pasos = r.historial.map(function (paso) {
-            return "<li>" + paso.map(formatoPaso).join(", ") + "</li>";
-        }).join("");
-
+    function seccion(algoritmo, r) {
         return '<section class="rutas-algo" style="--color:' + DATOS.colores[algoritmo] + '">' +
             "<h3>" + algoritmo + "<small>" + esc(DATOS.descripcion[algoritmo]) + "</small></h3>" +
             '<p class="rutas-camino">' + flechas(r.ruta) + "</p>" +
             '<p class="rutas-cifras"><b>' + (r.ruta.length - 1) + "</b> conexiones · <b>" + formatoKm(r.costo) +
             "</b> · " + r.orden.length + " nodos expandidos</p>" +
-            "<details><summary>Costo acumulado tramo a tramo</summary><table>" + filas + "</table></details>" +
-            "<details><summary>Orden de visita (nodos expandidos)</summary><p>" + flechas(r.orden) + "</p></details>" +
-            "<details><summary>" + tituloCola + "</summary><ol>" + pasos + "</ol></details>" +
             "</section>";
-    }
-
-    function conclusion(bfs, ucs) {
-        if (JSON.stringify(bfs.ruta) === JSON.stringify(ucs.ruta)) {
-            return "BFS y UCS encontraron <b>la misma ruta</b>: la de menos conexiones también es la de menor distancia.";
-        }
-        var diferencia = redondear(bfs.costo - ucs.costo);
-        if (diferencia === 0) {
-            return "Las rutas son distintas pero miden lo mismo: hay un empate en distancia.";
-        }
-        var texto = "Las rutas de BFS y UCS son <b>distintas</b>. UCS ahorra <b>" + formatoKm(diferencia) +
-            "</b> frente a BFS. ";
-        var extra = ucs.ruta.length - bfs.ruta.length;
-        if (extra > 0) {
-            return texto + "BFS escogió la ruta con menos conexiones sin mirar las distancias; UCS aceptó " +
-                extra + (extra === 1 ? " conexión más" : " conexiones más") + " a cambio de recorrer menos kilómetros.";
-        }
-        return texto + "Con el mismo número de conexiones, UCS escogió el camino más corto y BFS se quedó con el primero que encontró.";
-    }
-
-    function conclusionVoraz(ucs, voraz) {
-        var menos = ucs.orden.length - voraz.orden.length;
-        var expansiones = "<b>" + menos + (menos === 1 ? " nodo menos</b>" : " nodos menos</b>");
-        if (JSON.stringify(voraz.ruta) === JSON.stringify(ucs.ruta)) {
-            return "La voraz llegó a la <b>misma ruta óptima</b> que UCS expandiendo " + expansiones +
-                ": la heurística la llevó derecho al destino. Que acierte aquí no es garantía: " +
-                "en otros pares se equivoca.";
-        }
-        var deMas = redondear(voraz.costo - ucs.costo);
-        if (deMas <= 0) {
-            return "La voraz encontró otra ruta que mide lo mismo que la de UCS: hay un empate.";
-        }
-        return "La voraz expandió " + expansiones + " que UCS, pero su ruta cuesta <b>" + formatoKm(deMas) +
-            " más</b>: mira solo lo que falta (h) e ignora lo ya recorrido (g), así que no garantiza la ruta más corta.";
-    }
-
-    function conclusionAstar(ucs, voraz, astar) {
-        var texto;
-        if (astar.costo === ucs.costo) {
-            texto = "A* llegó al <b>mismo costo óptimo</b> que UCS (" + formatoKm(astar.costo) +
-                "): usa la misma heurística que la voraz, pero la suma a lo ya recorrido en vez de " +
-                "reemplazarlo, y como nunca sobreestima, no pierde optimalidad. ";
-            if (JSON.stringify(astar.ruta) !== JSON.stringify(ucs.ruta)) {
-                texto += "Las rutas difieren pero miden lo mismo: hay varios caminos óptimos. ";
-            }
-        } else {
-            texto = "A* dio " + formatoKm(astar.costo) + " y UCS " + formatoKm(ucs.costo) + ". ";
-        }
-        var ahorro = ucs.orden.length - astar.orden.length;
-        if (ahorro > 0) {
-            texto += "Expandió <b>" + ahorro + " nodos menos</b> que UCS (" +
-                Math.round(100 * ahorro / ucs.orden.length) + "% menos trabajo). ";
-        } else if (ahorro === 0) {
-            texto += "Expandió los mismos nodos que UCS: la heurística no descartó ninguna rama. ";
-        } else {
-            texto += "Expandió " + (-ahorro) + " nodos más que UCS, algo posible en trayectos muy cortos. ";
-        }
-        if (voraz.orden.length < astar.orden.length) {
-            texto += "La voraz expandió aún menos (" + voraz.orden.length + "), pero sin garantizar la " +
-                "ruta más corta: esa es la diferencia entre ir rápido e ir rápido y bien.";
-        }
-        return texto;
     }
 
     function comparacion(bfs, ucs, voraz, astar) {
@@ -514,8 +424,7 @@ _PLANTILLA_PANEL = r"""
                  formatoKm(astar.costo)) +
             fila("Nodos expandidos", bfs.orden.length, ucs.orden.length, voraz.orden.length,
                  astar.orden.length) +
-            "</table><p>" + conclusion(bfs, ucs) + "</p><p>" + conclusionVoraz(ucs, voraz) +
-            "</p><p>" + conclusionAstar(ucs, voraz, astar) + "</p></section>";
+            "</table></section>";
     }
 
     function nota(texto) {
@@ -549,24 +458,17 @@ _PLANTILLA_PANEL = r"""
         var astar = busquedaAEstrella(grafo, inicio, objetivo);
 
         var resultados = {
-            BFS: {ruta: bfs.ruta, costo: costoRuta(grafo, bfs.ruta), orden: bfs.ordenVisita, historial: bfs.historial},
-            UCS: {ruta: ucs.ruta, costo: ucs.costo, orden: ucs.ordenVisita, historial: ucs.historial},
-            Voraz: {ruta: voraz.ruta, costo: voraz.costo, orden: voraz.ordenVisita, historial: voraz.historial},
-            "A*": {ruta: astar.ruta, costo: astar.costo, orden: astar.ordenVisita, historial: astar.historial},
+            BFS: {ruta: bfs.ruta, costo: costoRuta(grafo, bfs.ruta), orden: bfs.ordenVisita},
+            UCS: {ruta: ucs.ruta, costo: ucs.costo, orden: ucs.ordenVisita},
+            Voraz: {ruta: voraz.ruta, costo: voraz.costo, orden: voraz.ordenVisita},
+            "A*": {ruta: astar.ruta, costo: astar.costo, orden: astar.ordenVisita},
         };
         dibujar(resultados, inicio, objetivo);
         salida.innerHTML =
-            seccion("BFS", resultados.BFS, "Evolución de la cola FIFO", esc) +
-            seccion("UCS", resultados.UCS, "Evolución de la cola de prioridad (costo acumulado)",
-                    function (e) { return esc(e[1]) + " (" + numero(e[0]) + ")"; }) +
-            seccion("Voraz", resultados.Voraz,
-                    "Evolución de la cola de prioridad (distancia en línea recta que falta)",
-                    function (e) { return esc(e[1]) + " (" + numero(e[0]) + ")"; }) +
-            seccion("A*", resultados["A*"], "Evolución de la cola de prioridad (f = g + h)",
-                    function (e) {
-                        return esc(e[3]) + " (f " + numero(e[0]) + " = g " + numero(e[1]) +
-                               " + h " + numero(e[2]) + ")";
-                    }) +
+            seccion("BFS", resultados.BFS) +
+            seccion("UCS", resultados.UCS) +
+            seccion("Voraz", resultados.Voraz) +
+            seccion("A*", resultados["A*"]) +
             comparacion(resultados.BFS, resultados.UCS, resultados.Voraz, resultados["A*"]);
     }
 
@@ -657,15 +559,25 @@ def generar_mapa_interactivo(grafo=None, rutas=None, carpeta=CARPETA_SALIDA):
     for etiqueta, archivo in (("style", "leaflet.css"), ("script", "leaflet.js"), ("script", "jquery.min.js")):
         codigo = (CARPETA_WEB / archivo).read_text(encoding="utf-8")
         cabecera.add_child(folium.Element(f"{{% raw %}}<{etiqueta}>{codigo}</{etiqueta}>{{% endraw %}}"))
-    # Va después de leaflet.css, que pinta el fondo de gris.
-    cabecera.add_child(folium.Element("<style>.leaflet-container{background:#ffffff}</style>"))
+    # Va después de leaflet.css, que pinta el fondo de gris. El letrero de las localidades se
+    # distingue del nombre de los centros comerciales: mayúsculas, más grande y con borde.
+    cabecera.add_child(folium.Element(
+        "<style>.leaflet-container{background:#ffffff}"
+        ".leaflet-tooltip.letrero-localidad{font:700 13px/1.2 system-ui,-apple-system,'Segoe UI',Roboto,"
+        "sans-serif;letter-spacing:.04em;text-transform:uppercase;color:#1B2A41;background:#fff;"
+        "border:2px solid #3C3C3C;border-radius:4px;padding:3px 8px;box-shadow:0 1px 4px rgba(0,0,0,.3)}"
+        "</style>"
+    ))
 
     localidades = cargar_localidades()[["nombre", "color", "geometry"]]
     folium.GeoJson(
         localidades, name="Localidades",
         style_function=lambda f: {"fillColor": f["properties"]["color"], "color": "#3C3C3C",
                                   "weight": 1, "fillOpacity": ALPHA_MAPA},
-        tooltip=folium.GeoJsonTooltip(fields=["nombre"], aliases=["Localidad:"]),
+        # Al pasar el mouse, la localidad se resalta y su nombre sale en un letrero junto al cursor.
+        highlight_function=lambda f: {"weight": 3, "fillOpacity": 0.7},
+        tooltip=folium.GeoJsonTooltip(fields=["nombre"], labels=False, sticky=True,
+                                      class_name="letrero-localidad"),
     ).add_to(mapa)
 
     capa_conexiones = folium.FeatureGroup(name="Conexiones")
