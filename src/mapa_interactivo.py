@@ -320,10 +320,17 @@ _PLANTILLA_PANEL = r"""
     // De la más ancha a la más delgada, para que los tramos compartidos se vean de todos los colores.
     var ANCHOS = [["BFS", 12, 0.85], ["Voraz", 8, 0.9], ["UCS", 5, 1], ["A*", 2.5, 1]];
     var capas = {};
+    // Cada casilla del control de capas toma el color de su ruta (accent-color pinta la casilla marcada).
+    var reglasCasillas = "";
     ANCHOS.forEach(function (a) {
         capas[a[0]] = L.layerGroup().addTo(mapa);
-        control.addOverlay(capas[a[0]], "Ruta " + a[0]);
+        control.addOverlay(capas[a[0]], '<span data-ruta="' + a[0] + '">Ruta ' + a[0] + "</span>");
+        reglasCasillas += '.leaflet-control-layers label:has([data-ruta="' + a[0] + '"]) input{accent-color:' +
+            DATOS.colores[a[0]] + "}";
     });
+    var estiloCasillas = document.createElement("style");
+    estiloCasillas.textContent = reglasCasillas;
+    document.head.appendChild(estiloCasillas);
     var capaExtremos = L.layerGroup().addTo(mapa);
 
     function numero(v) {
